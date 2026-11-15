@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { updateAdminReviewStatus } from "../actions";
+import Toast from "@/app/toast";
+import { toastVariantForMessage } from "@/lib/toast";
 
 export const metadata: Metadata = { title: "Quản lý đánh giá | Quản trị" };
 
@@ -40,7 +42,7 @@ export default async function AdminReviewsPage({ searchParams }: PageProps<"/adm
       <div className="dashboard-kicker">QUẢN LÝ</div>
       <h1 className="admin-page-title">Đánh giá</h1>
       <p className="dashboard-intro">Duyệt đánh giá khách hàng trước khi hiển thị trên website cửa hàng.</p>
-      {message && <p className="dashboard-message" role="status">{message}</p>}
+      <Toast message={message} variant={typeof query.message === "string" ? toastVariantForMessage(query.message) : "success"} />
       {error && <p className="admin-error" role="alert">Không đọc được đánh giá. Kiểm tra migration đánh giá đã chạy chưa.</p>}
 
       <div className="admin-review-list">

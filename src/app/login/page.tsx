@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -14,6 +15,12 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [notice, setNotice] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("mode") === "signup") {
+      setMode("signup");
+    }
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,10 +64,10 @@ export default function LoginPage() {
 
   return (
     <main className="auth-page">
-      <a className="brand auth-brand" href="/" aria-label="Trở về cửa hàng">
-        <span className="brand-mark">M</span>
-        <span className="brand-name">bếp nhà mơ<span>.</span></span>
-      </a>
+      <Link className="brand auth-brand" href="/" aria-label="Trở về trang giới thiệu Gần Đây">
+        <span className="brand-mark">G</span>
+        <span className="brand-name">gần đây<span>.</span></span>
+      </Link>
       <section className="auth-card">
         <div className="eyebrow"><span>✳</span> KÊNH DÀNH CHO CHỦ QUÁN</div>
         <h1>{mode === "signin" ? "Chào mừng bạn trở lại" : "Mở gian hàng của bạn"}</h1>
@@ -92,7 +99,7 @@ export default function LoginPage() {
             {mode === "signin" ? "Đăng ký chủ quán" : "Đăng nhập"}
           </button>
         </p>
-        <a className="back-home" href="/">← Quay lại cửa hàng mẫu</a>
+        <Link className="back-home" href="/">← Về trang giới thiệu</Link>
       </section>
     </main>
   );

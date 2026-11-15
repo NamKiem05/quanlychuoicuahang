@@ -66,3 +66,30 @@ export async function updateAdminReviewStatus(formData: FormData) {
   revalidatePath("/");
   redirect("/admin/reviews?message=review-status-updated");
 }
+
+export async function removeAdminStoreDomain(formData: FormData) {
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getClaims();
+  if (!authData?.claims?.sub) redirect("/login");
+
+  const { data: isAdmin, error: adminError } = await supabase.rpc("is_platform_admin");
+  if (adminError || !isAdmin) redirect("/admin?message=not-admin");
+
+  const domainId = String(formData.get("domain_id") ?? "").trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(domainId)) {
+    redirect("/admin/domains?message=invalid-domain");
+  }
+
+  const { data: deletedDomain, error } = await supabase
+    .from("store_domains")
+    .delete()
+    .eq("id", domainId)
+    .select("id")
+    .maybeSingle();
+
+  if (error || !deletedDomain) redirect("/admin/domains?message=domain-remove-failed");
+  revalidatePath("/admin/domains");
+  revalidatePath("/dashboard/domains");
+  redirect("/admin/domains?message=domain-removed");
+}
+

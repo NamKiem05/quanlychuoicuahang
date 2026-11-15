@@ -3,11 +3,13 @@ import nodemailer from "nodemailer";
 
 export type OrderStatusNotice =
   | "confirmed"
+  | "preparing"
   | "rejected"
   | "ready"
   | "out_for_delivery"
   | "completed"
   | "cancelled"
+  | "cancellation_request_declined"
   | "payment_confirmed";
 
 type OrderNoticeDetails = {
@@ -24,6 +26,11 @@ const notices: Record<OrderStatusNotice, { subject: string; title: string; messa
     subject: "Cửa hàng đã xác nhận đơn hàng",
     title: "Đơn hàng đã được xác nhận",
     message: ({ storeName }) => `${storeName} đã xác nhận và sẽ bắt đầu chuẩn bị đơn hàng của bạn.`,
+  },
+  preparing: {
+    subject: "Cửa hàng đang chuẩn bị đơn hàng",
+    title: "Đơn hàng đang được chuẩn bị",
+    message: ({ storeName }) => `${storeName} đang chuẩn bị món cho đơn hàng của bạn.`,
   },
   rejected: {
     subject: "Cửa hàng chưa thể nhận đơn hàng",
@@ -51,6 +58,11 @@ const notices: Record<OrderStatusNotice, { subject: string; title: string; messa
     subject: "Đơn hàng đã được hủy",
     title: "Đơn hàng đã được hủy",
     message: ({ storeName }) => `Đơn hàng tại ${storeName} đã được hủy. Vui lòng liên hệ cửa hàng nếu bạn cần hỗ trợ.`,
+  },
+  cancellation_request_declined: {
+    subject: "Cửa hàng chưa chấp nhận yêu cầu hủy",
+    title: "Yêu cầu hủy đơn chưa được chấp nhận",
+    message: ({ storeName }) => `${storeName} chưa chấp nhận yêu cầu hủy đơn. Vui lòng liên hệ cửa hàng nếu bạn cần hỗ trợ, đặc biệt nếu bạn đã chuyển khoản.`,
   },
   payment_confirmed: {
     subject: "Cửa hàng đã xác nhận thanh toán",

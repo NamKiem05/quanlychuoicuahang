@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
 type NearbyStore = {
@@ -22,6 +23,7 @@ type NearbyProduct = {
   description: string;
   price_vnd: number;
   image_url: string | null;
+  stock_quantity: number | null;
   category: string;
   store_name: string;
   store_slug: string;
@@ -29,6 +31,7 @@ type NearbyProduct = {
   rating: number | null;
   review_count: number;
   created_at: string;
+  is_new: boolean;
 };
 
 const commonCategories = [
@@ -67,6 +70,7 @@ function formatDistance(distance: number) {
 
 export default function FoodDiscovery() {
   const supabase = useMemo(() => createClient(), []);
+  const [clientNow, setClientNow] = useState<number | null>(null);
   const [stores, setStores] = useState<NearbyStore[]>([]);
   const [products, setProducts] = useState<NearbyProduct[]>([]);
   const [categoryNames, setCategoryNames] = useState<string[]>([]);
@@ -76,6 +80,11 @@ export default function FoodDiscovery() {
   const [hasSearched, setHasSearched] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setClientNow(Date.now()), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const categories = categoryNames.length
     ? categoryNames.map((name) => ({ name, icon: categoryIcon(name) }))
@@ -127,7 +136,7 @@ export default function FoodDiscovery() {
     const [{ data: productRows, error: productError }, { data: categoryRows, error: categoryError }] = await Promise.all([
       supabase
         .from("products")
-        .select("id, store_id, category_id, name, description, price_vnd, image_url, created_at")
+        .select("id, store_id, category_id, name, description, price_vnd, image_url, stock_quantity, created_at")
         .in("store_id", orderableStoreIds)
         .eq("status", "active")
         .order("created_at", { ascending: false })
@@ -174,6 +183,7 @@ export default function FoodDiscovery() {
         description: product.description,
         price_vnd: Number(product.price_vnd),
         image_url: product.image_url,
+        stock_quantity: product.stock_quantity,
         category: product.category_id ? categoryById.get(product.category_id) || "Chưa phân loại" : "Chưa phân loại",
         store_name: store.name,
         store_slug: store.slug,
@@ -181,6 +191,9 @@ export default function FoodDiscovery() {
         rating: summary ? summary.total / summary.count : null,
         review_count: summary ? summary.count : 0,
         created_at: product.created_at,
+        is_new: clientNow !== null
+          && clientNow >= new Date(product.created_at).getTime()
+          && clientNow - new Date(product.created_at).getTime() < 14 * 24 * 60 * 60 * 1000,
       }];
     }));
   }
@@ -220,10 +233,10 @@ export default function FoodDiscovery() {
   return (
     <main className="food-home">
       <header className="food-header">
-        <a className="brand food-brand" href="/" aria-label="Gần Đây - trang chủ">
+        <Link className="brand food-brand" href="/" aria-label="Gần Đây - trang chủ">
           <span className="brand-mark">G</span>
           <span><b>gần đây<span>.</span></b><small>Món ngon quanh bạn</small></span>
-        </a>
+        </Link>
         <label className="food-search">
           <span aria-hidden="true">⌕</span>
           <input
@@ -235,13 +248,13 @@ export default function FoodDiscovery() {
           />
         </label>
         <nav className="food-nav" aria-label="Điều hướng chính">
-          <a className="food-nav-active" href="/">⌂ <span>Trang chủ</span></a>
+          <Link className="food-nav-active" href="/">⌂ <span>Trang chủ</span></Link>
           <a href="#categories">▦ <span>Danh mục</span></a>
           <a href="#promotions">◇ <span>Tiện ích</span></a>
           <a href="#nearby">⌂ <span>Nhà hàng</span></a>
-          <a href="/track-order">↗ <span>Tra cứu đơn</span></a>
+          <Link href="/track-order">↗ <span>Tra cứu đơn</span></Link>
         </nav>
-        <a className="food-owner-link" href="/login">Chủ quán</a>
+        <Link className="food-owner-link" href="/login">Chủ quán</Link>
       </header>
 
       <section className="food-hero">
@@ -285,20 +298,21 @@ export default function FoodDiscovery() {
               <div className="food-product-grid">
                 {visibleProducts.map((product) => (
                   <article className="food-product-card" key={product.id}>
-                    <a className="food-product-photo" href={"/" + product.store_slug} style={product.image_url ? { backgroundImage: "url(\"" + product.image_url + "\")" } : undefined} aria-label={"Xem " + product.name + " tại " + product.store_name}>
+                    <Link className="food-product-photo" href={"/" + product.store_slug} style={product.image_url ? { backgroundImage: "url(\"" + product.image_url + "\")" } : undefined} aria-label={"Xem " + product.name + " tại " + product.store_name}>
                       {!product.image_url && <span>{categoryIcon(product.category)}</span>}
-                      {Date.now() - new Date(product.created_at).getTime() < 14 * 24 * 60 * 60 * 1000 && <span className="food-product-badge">Mới</span>}
-                    </a>
+                      {product.is_new && <span className="food-product-badge">Mới</span>}
+                      {product.stock_quantity === 0 && <span className="food-product-badge sold-out-food-badge">Hết hàng</span>}
+                    </Link>
                     <div className="food-product-info">
                       <small>{product.category}</small>
-                      <a className="food-product-name" href={"/" + product.store_slug}>{product.name}</a>
+                      <Link className="food-product-name" href={"/" + product.store_slug}>{product.name}</Link>
                       <p>{product.store_name} · {formatDistance(product.distance_m)}</p>
                       <div className="food-product-rating">
                         {product.rating ? <><span>★</span> {product.rating.toFixed(1)} <small>({product.review_count})</small></> : <small>Chưa có đánh giá</small>}
                       </div>
                       <div className="food-product-bottom">
                         <strong>{formatPrice(product.price_vnd)}</strong>
-                        <a href={"/" + product.store_slug} aria-label={"Xem thực đơn " + product.store_name}>Vào quán <span>↗</span></a>
+                        <Link href={"/" + product.store_slug} aria-label={"Xem thực đơn " + product.store_name}>Vào quán <span>↗</span></Link>
                       </div>
                     </div>
                   </article>
@@ -329,7 +343,7 @@ export default function FoodDiscovery() {
       <section className="food-promotions" id="promotions" aria-label="Thông tin dịch vụ">
         <a className="food-promo-card food-promo-nearby" href="#nearby"><span>⌖</span><div><b>Tìm quán gần nhà</b><small>Khám phá cửa hàng trong 5 km</small></div><strong>→</strong></a>
         <a className="food-promo-card food-promo-direct" href="#popular"><span>♨</span><div><b>Đặt món trực tiếp</b><small>Chọn món từ thực đơn cửa hàng</small></div><strong>→</strong></a>
-        <a className="food-promo-card food-promo-track" href="/track-order"><span>✓</span><div><b>Theo dõi đơn hàng</b><small>Tra cứu bằng mã đơn của bạn</small></div><strong>→</strong></a>
+        <Link className="food-promo-card food-promo-track" href="/track-order"><span>✓</span><div><b>Theo dõi đơn hàng</b><small>Tra cứu bằng mã đơn của bạn</small></div><strong>→</strong></Link>
       </section>
 
       <section className="nearby-section food-nearby-section" id="nearby" aria-labelledby="nearby-heading">
@@ -346,7 +360,7 @@ export default function FoodDiscovery() {
         {stores.length > 0 ? (
           <div className="nearby-grid">
             {stores.map((store) => (
-              <a className="nearby-card" href={"/" + store.slug} key={store.id}>
+              <Link className="nearby-card" href={"/" + store.slug} key={store.id}>
                 <div className="nearby-card-image" style={store.banner_url ? { backgroundImage: "url(\"" + store.banner_url + "\")" } : undefined}>
                   <span className="nearby-distance">{formatDistance(store.distance_m)}</span>
                   <span className={"nearby-open-status" + (store.accepts_orders ? "" : " paused")}>{store.accepts_orders ? "Đang nhận đơn" : "Tạm nghỉ"}</span>
@@ -356,7 +370,7 @@ export default function FoodDiscovery() {
                   <div><b>{store.name}</b><span>{store.address || "Đang cập nhật địa chỉ"}</span></div>
                   <span className="nearby-arrow">↗</span>
                 </div>
-              </a>
+              </Link>
             ))}
           </div>
         ) : (
@@ -368,10 +382,10 @@ export default function FoodDiscovery() {
       </section>
 
       <footer className="food-footer">
-        <a className="brand food-brand" href="/" aria-label="Gần Đây - trang chủ"><span className="brand-mark">G</span><span><b>gần đây<span>.</span></b><small>Món ngon quanh bạn</small></span></a>
+        <Link className="brand food-brand" href="/" aria-label="Gần Đây - trang chủ"><span className="brand-mark">G</span><span><b>gần đây<span>.</span></b><small>Món ngon quanh bạn</small></span></Link>
         <span>Đặt món trực tiếp từ các cửa hàng địa phương.</span>
-        <a href="/login">Dành cho chủ quán ↗</a>
-        <a href="/track-order">Tra cứu đơn hàng</a>
+        <Link href="/login">Dành cho chủ quán ↗</Link>
+        <Link href="/track-order">Tra cứu đơn hàng</Link>
       </footer>
     </main>
   );

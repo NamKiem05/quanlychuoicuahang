@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { updateReviewStatus } from "../actions";
 import { dashboardMessages, getMerchantContext, reviewStatusLabels } from "../data";
+import Toast from "@/app/toast";
+import { toastVariantForMessage } from "@/lib/toast";
 
 export const metadata: Metadata = { title: "Đánh giá | Quản lý cửa hàng" };
 
@@ -22,7 +24,7 @@ export default async function MerchantReviewsPage({ searchParams }: { searchPara
       <div className="dashboard-kicker">PHẢN HỒI KHÁCH HÀNG</div>
       <h1 className="admin-page-title">Đánh giá</h1>
       <p className="dashboard-intro">Duyệt đánh giá và theo dõi phản hồi về món ăn của cửa hàng.</p>
-      {message && <p className="dashboard-message" role="status">{message}</p>}
+      <Toast message={message} variant={query.message ? toastVariantForMessage(query.message) : "success"} />
       <section className="dashboard-card review-admin-card merchant-page-card">
         <div className="dashboard-card-heading">
           <div><span className="card-number">★</span><h2>Đánh giá của khách</h2></div>

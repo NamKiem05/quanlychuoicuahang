@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import Image from "next/image";
 import { updateStoreLocation } from "../actions";
 
 const TILE_SIZE = 256;
@@ -75,10 +76,9 @@ export default function StoreLocationPicker({
   const [viewport, setViewport] = useState({ width: 760, height: 350 });
   const [message, setMessage] = useState("");
   const [tilesFailed, setTilesFailed] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
-  const centerRef = useRef(center);
   const dragRef = useRef<DragState | null>(null);
-  centerRef.current = center;
 
   useEffect(() => {
     const element = mapRef.current;
@@ -101,9 +101,10 @@ export default function StoreLocationPicker({
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      center: centerRef.current,
+      center,
       moved: false,
     };
+    setIsDragging(false);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -112,11 +113,13 @@ export default function StoreLocationPicker({
     if (!drag || drag.pointerId !== event.pointerId) return;
     const deltaX = event.clientX - drag.startX;
     const deltaY = event.clientY - drag.startY;
-    if (Math.hypot(deltaX, deltaY) > 4) drag.moved = true;
+    if (!drag.moved && Math.hypot(deltaX, deltaY) > 4) {
+      drag.moved = true;
+      setIsDragging(true);
+    }
     if (!drag.moved) return;
     const originalCenter = project(drag.center, zoom);
     const nextCenter = unproject(originalCenter.x - deltaX, originalCenter.y - deltaY, zoom);
-    centerRef.current = nextCenter;
     setCenter(nextCenter);
   };
 
@@ -124,13 +127,13 @@ export default function StoreLocationPicker({
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     dragRef.current = null;
+    setIsDragging(false);
     const deltaX = event.clientX - drag.startX;
     const deltaY = event.clientY - drag.startY;
     const originalCenter = project(drag.center, zoom);
     const finalCenter = drag.moved
       ? unproject(originalCenter.x - deltaX, originalCenter.y - deltaY, zoom)
       : drag.center;
-    centerRef.current = finalCenter;
     setCenter(finalCenter);
 
     if (!drag.moved && mapRef.current) {
@@ -154,7 +157,6 @@ export default function StoreLocationPicker({
       ({ coords }) => {
         const next = { latitude: coords.latitude, longitude: coords.longitude };
         setPosition(next);
-        centerRef.current = next;
         setCenter(next);
         setZoom(16);
         setMessage("Đã lấy vị trí hiện tại. Nếu cần, hãy kéo bản đồ để chỉnh ghim rồi lưu.");
@@ -182,14 +184,17 @@ export default function StoreLocationPicker({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={() => { dragRef.current = null; }}
-        style={{ cursor: dragRef.current?.moved ? "grabbing" : "crosshair" }}
+        onPointerCancel={() => { dragRef.current = null; setIsDragging(false); }}
+        style={{ cursor: isDragging ? "grabbing" : "crosshair" }}
       >
-        {tiles.map((tile) => <img
+        {tiles.map((tile) => <Image
           className="store-location-tile"
           key={tile.key}
           src={tile.url}
           alt=""
+          width={TILE_SIZE}
+          height={TILE_SIZE}
+          unoptimized
           draggable={false}
           style={{ left: tile.left, top: tile.top }}
           onError={() => setTilesFailed(true)}

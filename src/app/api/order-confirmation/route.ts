@@ -6,6 +6,8 @@ type ConfirmationDetails = {
   customer_name: string;
   store_name: string;
   total_vnd: number;
+  promotion_code?: string | null;
+  discount_vnd?: number;
 };
 
 function escapeHtml(value: string) {
@@ -77,6 +79,8 @@ export async function POST(request: Request) {
     const storeName = escapeHtml(details.store_name);
     const code = escapeHtml(publicCode);
     const price = formatPrice(Number(details.total_vnd));
+    const discountVnd = Number(details.discount_vnd ?? 0);
+    const promotionCode = details.promotion_code ? escapeHtml(details.promotion_code) : "";
     const trackingUrl = new URL("/track-order", request.url).toString();
     const html = `
       <div style="margin:0;padding:32px 12px;background:#f6f9f4;font-family:Arial,sans-serif;color:#245c37">
@@ -87,6 +91,7 @@ export async function POST(request: Request) {
           <div style="padding:18px;border-radius:12px;background:#f2f7f0">
             <p style="margin:0 0 8px;color:#7a8178;font-size:12px">MÃ ĐƠN HÀNG</p>
             <p style="margin:0;color:#245c37;font-size:22px;font-weight:bold;letter-spacing:1px">${code}</p>
+            ${discountVnd > 0 ? `<p style="margin:12px 0 0;color:#52604f">Mã ${promotionCode}: giảm <strong>${formatPrice(discountVnd)}</strong></p>` : ""}
             <p style="margin:12px 0 0;color:#52604f">Tổng tiền: <strong>${price}</strong></p>
           </div>
           <p style="margin:22px 0 14px;color:#687166;line-height:1.6">Hãy giữ lại mã đơn và số điện thoại đã đặt để tra cứu tình trạng đơn hàng.</p>
@@ -97,6 +102,7 @@ export async function POST(request: Request) {
     const text = [
       `Cảm ơn ${details.customer_name} đã đặt món tại ${details.store_name}.`,
       `Mã đơn hàng: ${publicCode}`,
+      ...(discountVnd > 0 ? [`Mã khuyến mãi ${details.promotion_code}: giảm ${formatPrice(discountVnd)}`] : []),
       `Tổng tiền: ${price}`,
       `Tra cứu đơn hàng: ${trackingUrl}`,
       "Dùng mã đơn và số điện thoại đã đặt để tra cứu.",

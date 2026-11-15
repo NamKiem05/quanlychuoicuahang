@@ -12,6 +12,7 @@ type OrderNotice = {
   total: number;
   createdAt: string;
   read: boolean;
+  kind: "new_order" | "cancellation_request";
 };
 
 type RealtimeOrder = {
@@ -20,6 +21,8 @@ type RealtimeOrder = {
   customer_name?: string | null;
   total_vnd?: number | string | null;
   created_at?: string | null;
+  cancellation_request_status?: string | null;
+  cancellation_requested_at?: string | null;
 };
 
 export default function OrderNotificationBell({ storeId, storeName }: { storeId: string | null; storeName: string }) {
@@ -41,6 +44,30 @@ export default function OrderNotificationBell({ storeId, storeName }: { storeId:
     soundEnabledRef.current = false;
 
     const supabase = createClient();
+    const publishNotice = (notice: OrderNotice) => {
+      const next = [notice, ...noticesRef.current.filter((item) => item.id !== notice.id)].slice(0, 30);
+      noticesRef.current = next;
+      setNotices(next);
+      setToast(notice);
+      if (toastTimerRef.current != null) window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = window.setTimeout(() => setToast(null), 7000);
+
+      if (soundEnabledRef.current && audioContextRef.current?.state === "running") playChime(audioContextRef.current);
+      if (document.hidden && "Notification" in window && window.Notification.permission === "granted") {
+        const browserNotice = new window.Notification(
+          `${notice.kind === "cancellation_request" ? "Yêu cầu hủy đơn" : "Đơn mới"} ${notice.code}`,
+          {
+            body: `${notice.customer} · ${notice.total.toLocaleString("vi-VN")}₫ · ${storeName}`,
+            tag: notice.id,
+          },
+        );
+        browserNotice.onclick = () => {
+          window.focus();
+          router.push("/dashboard/orders");
+          browserNotice.close();
+        };
+      }
+    };
     const channel = supabase
       .channel(`store-orders:${storeId}`)
       .on("postgres_changes", {
@@ -58,26 +85,29 @@ export default function OrderNotificationBell({ storeId, storeName }: { storeId:
           total: Number(row.total_vnd ?? 0),
           createdAt: row.created_at || new Date().toISOString(),
           read: false,
+          kind: "new_order",
         };
-        const next = [notice, ...noticesRef.current.filter((item) => item.id !== notice.id)].slice(0, 30);
-        noticesRef.current = next;
-        setNotices(next);
-        setToast(notice);
-        if (toastTimerRef.current != null) window.clearTimeout(toastTimerRef.current);
-        toastTimerRef.current = window.setTimeout(() => setToast(null), 7000);
-
-        if (soundEnabledRef.current && audioContextRef.current?.state === "running") playChime(audioContextRef.current);
-        if (document.hidden && "Notification" in window && window.Notification.permission === "granted") {
-          const browserNotice = new window.Notification(`Đơn mới ${notice.code}`, {
-            body: `${notice.customer} · ${notice.total.toLocaleString("vi-VN")}₫ · ${storeName}`,
-            tag: notice.id,
-          });
-          browserNotice.onclick = () => {
-            window.focus();
-            router.push("/dashboard/orders");
-            browserNotice.close();
-          };
-        }
+        publishNotice(notice);
+      })
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "orders",
+        filter: `store_id=eq.${storeId}`,
+      }, (payload) => {
+        const row = payload.new as RealtimeOrder;
+        if (!row.id || row.cancellation_request_status !== "pending" || !row.cancellation_requested_at) return;
+        const notice: OrderNotice = {
+          id: `${row.id}:cancellation:${row.cancellation_requested_at}`,
+          code: row.public_code || "Đơn hàng",
+          customer: row.customer_name || "Khách hàng",
+          total: Number(row.total_vnd ?? 0),
+          createdAt: row.cancellation_requested_at,
+          read: false,
+          kind: "cancellation_request",
+        };
+        if (noticesRef.current.some((item) => item.id === notice.id)) return;
+        publishNotice(notice);
       })
       .subscribe((status) => {
         setConnection(status === "SUBSCRIBED" ? "connected" : status === "CHANNEL_ERROR" || status === "TIMED_OUT" ? "error" : "connecting");
@@ -130,7 +160,7 @@ export default function OrderNotificationBell({ storeId, storeName }: { storeId:
       {toast && (
         <div className="order-notification-toast" role="status">
           <span className="order-notification-toast-icon">♬</span>
-          <div><b>Có đơn hàng mới · {toast.code}</b><small>{toast.customer} · {toast.total.toLocaleString("vi-VN")}₫</small></div>
+          <div><b>{toast.kind === "cancellation_request" ? "Khách yêu cầu hủy ·" : "Có đơn hàng mới ·"} {toast.code}</b><small>{toast.customer} · {toast.total.toLocaleString("vi-VN")}₫</small></div>
           <Link href="/dashboard/orders" onClick={() => {
             saveNotices(noticesRef.current.map((notice) => notice.id === toast.id ? { ...notice, read: true } : notice));
             setToast(null);
@@ -171,7 +201,7 @@ export default function OrderNotificationBell({ storeId, storeName }: { storeId:
                   }}
                 >
                   <span className="order-notification-dot" />
-                  <span><b>Đơn {notice.code}</b><small>{notice.customer} · {notice.total.toLocaleString("vi-VN")}₫</small><small>{new Date(notice.createdAt).toLocaleString("vi-VN")}</small></span>
+                  <span><b>{notice.kind === "cancellation_request" ? "Yêu cầu hủy" : "Đơn mới"} {notice.code}</b><small>{notice.customer} · {notice.total.toLocaleString("vi-VN")}₫</small><small>{new Date(notice.createdAt).toLocaleString("vi-VN")}</small></span>
                 </Link>
               )) : <p className="order-notification-empty">Chưa có đơn hàng mới.</p>}
             </div>

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Bếp Nhà Mơ | Món ngon nhà làm",
-  description: "Món ngon nhà làm, nấu bằng nguyên liệu tươi và cả tấm lòng.",
+  title: "Gần Đây | Website bán hàng riêng cho quán ăn",
+  description: "Nền tảng giúp quán ăn tạo website riêng, quản lý thực đơn và đơn hàng. Khách đặt món qua link do cửa hàng chia sẻ.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

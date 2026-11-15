@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createStore } from "./actions";
 import { dashboardMessages, formatPrice, getMerchantContext, orderStatusLabels } from "./data";
+import Toast from "@/app/toast";
+import { toastVariantForMessage } from "@/lib/toast";
 
 export const metadata: Metadata = { title: "Tổng quan cửa hàng | Bếp Nhà Mơ" };
 
@@ -15,7 +17,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <div className="dashboard-kicker">KHU VỰC CHỦ CỬA HÀNG</div>
         <h1 className="admin-page-title">Tạo gian hàng đầu tiên</h1>
         <p className="dashboard-intro">Tạo trang bán hàng riêng để bắt đầu đăng món và nhận đơn.</p>
-        {message && <p className="dashboard-message" role="status">{message}</p>}
+        <Toast message={message} variant={query.message ? toastVariantForMessage(query.message) : "success"} />
         <section className="dashboard-card store-setup-card">
           <div className="dashboard-card-heading">
             <div><span className="card-number">01</span><h2>Thông tin cửa hàng</h2></div>
@@ -54,15 +56,16 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   return (
     <main className="admin-content merchant-dashboard">
-      <div className="merchant-dashboard-heading">
-        <div>
+      <div className="admin-page-heading merchant-dashboard-heading">
+        <span className="admin-page-heading-icon" aria-hidden="true">▦</span>
+        <div className="merchant-dashboard-heading-copy">
           <div className="dashboard-kicker"><span className="dashboard-live-dot" /> TỔNG QUAN CỬA HÀNG</div>
           <h1 className="admin-page-title">Xin chào, {store.name}</h1>
           <p className="dashboard-intro">Cùng xem nhanh tình hình hoạt động của cửa hàng hôm nay.</p>
         </div>
         <Link className="merchant-heading-action" href="/dashboard/orders">Quản lý đơn hàng <span>→</span></Link>
       </div>
-      {message && <p className="dashboard-message" role="status">{message}</p>}
+      <Toast message={message} variant={query.message ? toastVariantForMessage(query.message) : "success"} />
 
       <section className="merchant-store-banner">
         <div className="merchant-store-banner-copy">

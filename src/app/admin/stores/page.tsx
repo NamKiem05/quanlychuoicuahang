@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { updateStoreStatus } from "../actions";
+import Toast from "@/app/toast";
+import { toastVariantForMessage } from "@/lib/toast";
 
 export const metadata: Metadata = { title: "Quản lý cửa hàng | Quản trị" };
 
@@ -44,7 +46,7 @@ export default async function AdminStoresPage({ searchParams }: PageProps<"/admi
       <div className="dashboard-kicker">QUẢN LÝ</div>
       <h1 className="admin-page-title">Cửa hàng</h1>
       <p className="dashboard-intro">Duyệt gian hàng mới, tạm dừng hoặc khóa cửa hàng.</p>
-      {message && <p className="dashboard-message" role="status">{message}</p>}
+      <Toast message={message} variant={typeof query.message === "string" ? toastVariantForMessage(query.message) : "success"} />
       {error && <p className="admin-error" role="alert">Không đọc được danh sách cửa hàng. Kiểm tra quyền truy cập cơ sở dữ liệu.</p>}
 
       <form className="dashboard-form merchant-order-filters admin-order-filters" method="get">

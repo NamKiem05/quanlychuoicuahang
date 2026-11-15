@@ -2,22 +2,28 @@ import type { Metadata } from "next";
 import { banks } from "@viet-qr/core";
 import { redirect } from "next/navigation";
 import StoreLocationPicker from "./location-picker";
+import SePayAutoConfirmSetup from "./sepay-auto-confirm-setup";
 import { updateStoreDeliverySettings, updateStoreOrderAcceptance, updateStorePaymentSettings, updateStoreProfile } from "../actions";
 import { dashboardMessages, getMerchantContext } from "../data";
+import Toast from "@/app/toast";
+import { toastVariantForMessage } from "@/lib/toast";
 
 export const metadata: Metadata = { title: "Cửa hàng | Quản lý cửa hàng" };
 
 export default async function MerchantStorePage({ searchParams }: { searchParams: Promise<{ message?: string }> }) {
   const [{ supabase, membership, store }, query] = await Promise.all([getMerchantContext(), searchParams]);
   if (!store || !membership) redirect("/dashboard");
-  const [{ data: paymentSettings }, { data: locationCoordinates }] = await Promise.all([
+  const [{ data: paymentSettings }, { data: locationCoordinates }, { data: sepayStatus }] = await Promise.all([
     supabase
       .from("store_payment_methods")
       .select("bank_code, bank_name, account_number, account_name, is_enabled")
       .eq("store_id", store.id)
       .maybeSingle(),
     supabase.rpc("get_store_location_coordinates", { requested_store_id: store.id }).maybeSingle(),
+    supabase.rpc("get_store_sepay_webhook_status", { requested_store_id: store.id }),
   ]);
+  const savedLocation = locationCoordinates as unknown as { latitude: number | null; longitude: number | null } | null;
+  const sepayConnection = sepayStatus as unknown as { has_key?: boolean; enabled?: boolean } | null;
   const message = query.message ? dashboardMessages[query.message] : undefined;
 
   return (
@@ -25,7 +31,7 @@ export default async function MerchantStorePage({ searchParams }: { searchParams
       <div className="dashboard-kicker">THIẾT LẬP GIAN HÀNG</div>
       <h1 className="admin-page-title">Cửa hàng</h1>
       <p className="dashboard-intro">Thông tin website và vị trí bán hàng của {store.name}.</p>
-      {message && <p className="dashboard-message" role="status">{message}</p>}
+      <Toast message={message} variant={query.message ? toastVariantForMessage(query.message) : "success"} />
 
       <section className="store-summary-card merchant-summary-card">
         <div>
@@ -95,8 +101,8 @@ export default async function MerchantStorePage({ searchParams }: { searchParams
           </div>
           {membership.role === "owner" ? (
             <StoreLocationPicker
-              initialLatitude={locationCoordinates?.latitude == null ? null : Number(locationCoordinates.latitude)}
-              initialLongitude={locationCoordinates?.longitude == null ? null : Number(locationCoordinates.longitude)}
+              initialLatitude={savedLocation?.latitude == null ? null : Number(savedLocation.latitude)}
+              initialLongitude={savedLocation?.longitude == null ? null : Number(savedLocation.longitude)}
             />
           ) : (
             <p className="dashboard-help">Chỉ chủ cửa hàng mới có thể thay đổi vị trí.</p>
@@ -122,7 +128,7 @@ export default async function MerchantStorePage({ searchParams }: { searchParams
                 <option value="true">Bật thanh toán QR</option>
                 <option value="false">Tạm tắt thanh toán QR</option>
               </select></label>
-              <p className="dashboard-help">Mỗi đơn có mã QR riêng gồm số tiền và nội dung chuyển khoản. Chủ cửa hàng cần tự kiểm tra biến động số dư rồi xác nhận đã nhận tiền trong trang Đơn hàng.</p>
+              <p className="dashboard-help">Mỗi đơn có mã QR riêng gồm số tiền và nội dung chuyển khoản. Khi chưa kết nối webhook, cửa hàng vẫn có thể xác nhận thanh toán thủ công trong trang Đơn hàng.</p>
               <button className="secondary-submit" type="submit">Lưu phương thức thanh toán</button>
             </form>
           ) : (
@@ -131,6 +137,15 @@ export default async function MerchantStorePage({ searchParams }: { searchParams
               {paymentSettings && <dl><div><dt>Ngân hàng</dt><dd>{paymentSettings.bank_name}</dd></div><div><dt>Số tài khoản</dt><dd>{paymentSettings.account_number}</dd></div><div><dt>Chủ tài khoản</dt><dd>{paymentSettings.account_name}</dd></div></dl>}
               <p className="dashboard-help">Chỉ chủ cửa hàng mới có thể thay đổi tài khoản nhận tiền.</p>
             </div>
+          )}
+          {membership.role === "owner" ? (
+            <SePayAutoConfirmSetup
+              hasKey={Boolean(sepayConnection?.has_key)}
+              enabled={Boolean(sepayConnection?.enabled)}
+              qrEnabled={Boolean(paymentSettings?.is_enabled)}
+            />
+          ) : (
+            <p className="dashboard-help">{sepayConnection?.enabled ? "Tự xác nhận thanh toán QR đang bật." : "Thanh toán QR đang chờ cửa hàng xác nhận thủ công."} Chỉ chủ cửa hàng mới có thể thiết lập kết nối.</p>
           )}
         </section>
 

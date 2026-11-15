@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import BankTransferQr, { type BankTransferDetails } from "@/app/bank-transfer-qr";
 
@@ -17,6 +18,8 @@ type TrackedOrder = {
   store_name: string;
   created_at: string;
   total_vnd: number;
+  promotion_code: string | null;
+  discount_vnd: number;
   fulfillment: "pickup" | "delivery";
   delivery_address: string | null;
   delivery_distance_m: number | null;
@@ -28,6 +31,10 @@ type TrackedOrder = {
   payment_bank_name: string | null;
   payment_account_number: string | null;
   payment_account_name: string | null;
+  cancellation_request_status: "none" | "pending" | "approved" | "declined";
+  cancellation_request_reason: string | null;
+  cancellation_requested_at: string | null;
+  cancellation_decided_at: string | null;
   items: OrderItem[];
 };
 
@@ -47,7 +54,7 @@ const isClosedOrder = (status: string) => status === "cancelled" || status === "
 
 function paymentStatusLabel(order: TrackedOrder) {
   if (order.payment_status === "paid") return isClosedOrder(order.status) ? "Đã nhận tiền · đơn đã đóng" : "Đã xác nhận";
-  return isClosedOrder(order.status) ? "Đơn đã đóng" : "Chờ cửa hàng xác nhận";
+  return isClosedOrder(order.status) ? "Đơn đã đóng" : "Đang chờ xác nhận chuyển khoản";
 }
 
 export default function TrackOrderForm() {
@@ -59,6 +66,8 @@ export default function TrackOrderForm() {
   const [reviewErrors, setReviewErrors] = useState<Record<string, string>>({});
   const [submittingReviewId, setSubmittingReviewId] = useState<string | null>(null);
   const [trackedPhone, setTrackedPhone] = useState("");
+  const [isSubmittingCancellation, setIsSubmittingCancellation] = useState(false);
+  const [cancellationError, setCancellationError] = useState("");
   const shouldAutoRefresh = Boolean(order && !isClosedOrder(order.status) && (
     order.status !== "completed" || (order.payment_method === "bank_transfer" && order.payment_status !== "paid")
   ));
@@ -84,6 +93,9 @@ export default function TrackOrderForm() {
           if (!current || current.public_code !== refreshedOrder.public_code) return current;
           const changed = current.status !== refreshedOrder.status
             || current.payment_status !== refreshedOrder.payment_status
+            || current.cancellation_request_status !== refreshedOrder.cancellation_request_status
+            || current.cancellation_request_reason !== refreshedOrder.cancellation_request_reason
+            || current.cancellation_decided_at !== refreshedOrder.cancellation_decided_at
             || current.items.length !== refreshedOrder.items.length
             || current.items.some((item, index) => item.review_status !== refreshedOrder.items[index]?.review_status);
           return changed ? refreshedOrder : current;
@@ -108,6 +120,7 @@ export default function TrackOrderForm() {
     setErrorMessage("");
     setReviewMessages({});
     setReviewErrors({});
+    setCancellationError("");
     setTrackedPhone("");
     setIsSearching(true);
     const formData = new FormData(event.currentTarget);
@@ -164,6 +177,45 @@ export default function TrackOrderForm() {
     }
   }
 
+  async function requestCancellation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCancellationError("");
+    if (!order || !trackedPhone) return;
+
+    setIsSubmittingCancellation(true);
+    const formData = new FormData(event.currentTarget);
+    try {
+      const { data, error } = await supabase.rpc("request_guest_order_cancellation", {
+        requested_public_code: order.public_code,
+        requested_customer_phone: trackedPhone,
+        requested_reason: String(formData.get("reason") ?? "").trim(),
+      });
+      const response = data as { status?: string; reason?: string | null; requested_at?: string | null } | null;
+
+      if (error || response?.status !== "pending") {
+        const detail = error?.message ?? "";
+        setCancellationError(detail.includes("cancellation unavailable")
+          ? "Đơn không còn ở trạng thái có thể gửi yêu cầu hủy."
+          : detail.includes("already decided")
+            ? "Yêu cầu hủy đơn này đã được cửa hàng xử lý."
+            : "Chưa gửi được yêu cầu hủy. Hãy tải lại đơn rồi thử lại.");
+        return;
+      }
+
+      setOrder((current) => current ? {
+        ...current,
+        cancellation_request_status: "pending",
+        cancellation_request_reason: response.reason ?? String(formData.get("reason") ?? "").trim(),
+        cancellation_requested_at: response.requested_at ?? new Date().toISOString(),
+        cancellation_decided_at: null,
+      } : current);
+    } catch {
+      setCancellationError("Chưa gửi được yêu cầu hủy. Hãy tải lại đơn rồi thử lại.");
+    } finally {
+      setIsSubmittingCancellation(false);
+    }
+  }
+
   return (
     <div className="tracking-content">
       <div className="eyebrow"><span>✳</span> ĐƠN HÀNG CỦA BẠN</div>
@@ -185,6 +237,26 @@ export default function TrackOrderForm() {
           </header>
           {shouldAutoRefresh && <p className="tracking-refresh-note"><span aria-hidden="true">●</span> Trạng thái tự cập nhật mỗi 10 giây khi trang đang mở.</p>}
           <p className="tracked-store">{order.store_name} · {new Date(order.created_at).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</p>
+          {order.cancellation_request_status === "pending" && <div className="tracked-cancellation is-pending" role="status">
+            <b>Đã gửi yêu cầu hủy đơn</b>
+            {order.cancellation_request_reason && <span>Lý do: {order.cancellation_request_reason}</span>}
+            <small>Cửa hàng đang xem xét yêu cầu của bạn.</small>
+            {order.payment_method === "bank_transfer" && <small>Nếu bạn đã chuyển khoản, cửa hàng sẽ xử lý việc hoàn tiền thủ công sau khi quyết định.</small>}
+          </div>}
+          {order.cancellation_request_status === "approved" && <div className="tracked-cancellation is-approved" role="status">
+            <b>Cửa hàng đã chấp nhận yêu cầu hủy</b>
+            <span>Đơn hàng đã được đóng.</span>
+            {order.payment_method === "bank_transfer" && <small>Nếu bạn đã chuyển khoản, vui lòng liên hệ cửa hàng để xác nhận việc hoàn tiền. Hệ thống không tự hoàn tiền.</small>}
+          </div>}
+          {order.cancellation_request_status === "declined" && <div className="tracked-cancellation is-declined" role="status">
+            <b>Cửa hàng chưa chấp nhận yêu cầu hủy</b>
+            <span>Liên hệ cửa hàng nếu bạn cần hỗ trợ thêm.</span>
+          </div>}
+          {cancellationError && <p className="order-error" role="alert">{cancellationError}</p>}
+          {order.status === "pending" || order.status === "confirmed" ? order.cancellation_request_status === "none" && <form className="tracked-cancel-form" onSubmit={requestCancellation}>
+            <label>Lý do yêu cầu hủy<textarea name="reason" rows={2} minLength={5} maxLength={500} required placeholder="Cho cửa hàng biết lý do bạn muốn hủy đơn" /></label>
+            <button className="secondary-submit" type="submit" disabled={isSubmittingCancellation}>{isSubmittingCancellation ? "Đang gửi..." : "Gửi yêu cầu hủy đơn"}</button>
+          </form> : null}
           {order.fulfillment === "delivery" && (
             <div className="tracked-delivery-summary">
               <b>Giao tận nơi</b>
@@ -235,10 +307,11 @@ export default function TrackOrderForm() {
               {isClosedOrder(order.status) && order.payment_status !== "paid" && <p className="payment-confirmed-note">Đơn đã đóng. Vui lòng liên hệ cửa hàng nếu bạn đã chuyển khoản.</p>}
             </section>
           )}
+          {Number(order.discount_vnd) > 0 && <div className="tracked-promotion"><span>Mã {order.promotion_code}</span><strong>−{formatPrice(Number(order.discount_vnd))}</strong></div>}
           <div className="tracked-total"><span>Tổng tiền</span><strong>{formatPrice(order.total_vnd)}</strong></div>
         </section>
       )}
-      <a className="back-home" href="/">← Về trang tìm cửa hàng</a>
+      <Link className="back-home" href="/">← Về trang giới thiệu</Link>
     </div>
   );
 }
