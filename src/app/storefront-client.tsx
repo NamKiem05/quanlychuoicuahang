@@ -11,6 +11,7 @@ import { getStoreBannerUrls, type StoreThemePreset, type StorefrontLayoutPreset,
 import StoreBannerSlideshow from "@/app/store-banner-slideshow";
 import RetailStorefront from "@/app/retail-storefront";
 import RetailCart from "@/app/retail-cart";
+import RetailCheckout from "@/app/retail-checkout";
 import type { RetailVariant } from "@/app/retail-variant-picker";
 import { getOrderHoursStatus, type OrderHours } from "@/lib/store-order-hours";
 import "./storefront-closed-notice.css";
@@ -161,6 +162,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
   const menuHeadingRef = useRef<HTMLHeadingElement>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [retailCartView, setRetailCartView] = useState(false);
+  const [retailCheckoutView, setRetailCheckoutView] = useState(false);
   const [retailCheckoutError, setRetailCheckoutError] = useState("");
   const retailCheckoutPending = useRef(false);
   useEffect(() => {
@@ -437,7 +439,9 @@ export default function StorefrontClient({ store, categories, products, reviews,
         router.push(`/login?store=${encodeURIComponent(store.slug)}`);
         return;
       }
-      setActivePanel("checkout");
+      setRetailCartView(false);
+      setRetailCheckoutView(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
       navigating = false;
       setRetailCheckoutError("Chưa kiểm tra được phiên đăng nhập. Hãy kiểm tra kết nối và thử lại.");
@@ -690,6 +694,8 @@ export default function StorefrontClient({ store, categories, products, reviews,
         distance: data.delivery_distance_m == null ? null : Number(data.delivery_distance_m),
       });
       setCart([]);
+      setRetailCheckoutView(false);
+      setRetailCartView(false);
       setActivePanel("success");
       void sendOrderConfirmationEmail(data.public_code, customerPhone);
     } catch {
@@ -701,7 +707,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
 
   function openCart(trigger: HTMLButtonElement) {
     dialogTriggerRef.current = trigger;
-    if (merchandiseMode === "retail") { setRetailCartView(true); return; }
+    if (merchandiseMode === "retail") { setRetailCheckoutView(false); setRetailCartView(true); return; }
     setActivePanel("cart");
   }
 
@@ -746,7 +752,17 @@ export default function StorefrontClient({ store, categories, products, reviews,
           void startRetailCheckout(trigger, pendingCart);
         } else setRetailCartView(true);
         return null;
-      }} cartView={retailCartView} onExitCart={() => setRetailCartView(false)} renderCart={(openDetail) => <RetailCart lines={cartLines} cartCount={cartCount} subtotal={cartTotal} discount={promotionDiscount} appliedCode={promotionForCart?.code ?? null} promotionInput={promotionCodeInput} promotionFeedback={promotionFeedback} promotionStale={Boolean(appliedPromotion && !promotionForCart)} applying={isApplyingPromotion} acceptsOrders={acceptsOrders} checkoutError={retailCheckoutError} recommendations={products.filter((product) => !cart.some((line) => line.productId === product.id))} onChange={changeQuantity} onPromotionInput={(value) => { setPromotionCodeInput(value); setAppliedPromotion(null); setPromotionFeedback(null); }} onApply={() => { void applyPromotion(); }} onClear={() => { setAppliedPromotion(null); setPromotionCodeInput(""); setPromotionFeedback(null); }} onContinue={() => { setRetailCartView(false); resetMenu(true); }} onCheckout={(trigger) => { void startRetailCheckout(trigger); }} onDetail={openDetail} />} cartQuantity={(id) => cart.filter((line) => line.productId === id).reduce((sum, line) => sum + line.quantity, 0)} /> : <>
+      }} cartView={retailCartView} checkoutView={retailCheckoutView} onExitCart={() => { setRetailCartView(false); setRetailCheckoutView(false); }} renderCheckout={() => <RetailCheckout
+        lines={cartLines} cartCount={cartCount} subtotal={cartTotal} discount={promotionDiscount} total={checkoutTotal}
+        storeName={store.name} deliveryEnabled={store.delivery_enabled} deliveryFee={store.delivery_fee_vnd} deliveryRadius={store.delivery_radius_m} bankTransfer={Boolean(store.bankTransfer)}
+        fulfillment={fulfillmentMethod} payment={paymentMethod} deliveryLocation={deliveryLocation} deliveryLocationMessage={deliveryLocationMessage} locating={isLocatingDelivery}
+        promoInput={promotionCodeInput} promoCode={promotionForCart?.code ?? null} promoFeedback={promotionFeedback} promoStale={Boolean(appliedPromotion && !promotionForCart)}
+        acceptsOrders={acceptsOrders} submitting={isSubmittingOrder} applying={isApplyingPromotion} error={orderError}
+        onBack={() => { setOrderError(""); setRetailCheckoutView(false); setRetailCartView(true); }} onSubmit={placeOrder}
+        onFulfillment={changeFulfillmentMethod} onPayment={setPaymentMethod} onLocate={requestDeliveryLocation}
+        onPromoInput={(value) => { setPromotionCodeInput(value); setAppliedPromotion(null); setPromotionFeedback(null); }}
+        onPromoApply={() => { void applyPromotion(); }} onPromoClear={() => { setAppliedPromotion(null); setPromotionCodeInput(""); setPromotionFeedback(null); }}
+      />} renderCart={(openDetail) => <RetailCart lines={cartLines} cartCount={cartCount} subtotal={cartTotal} discount={promotionDiscount} appliedCode={promotionForCart?.code ?? null} promotionInput={promotionCodeInput} promotionFeedback={promotionFeedback} promotionStale={Boolean(appliedPromotion && !promotionForCart)} applying={isApplyingPromotion} acceptsOrders={acceptsOrders} checkoutError={retailCheckoutError} recommendations={products.filter((product) => !cart.some((line) => line.productId === product.id))} onChange={changeQuantity} onPromotionInput={(value) => { setPromotionCodeInput(value); setAppliedPromotion(null); setPromotionFeedback(null); }} onApply={() => { void applyPromotion(); }} onClear={() => { setAppliedPromotion(null); setPromotionCodeInput(""); setPromotionFeedback(null); }} onContinue={() => { setRetailCartView(false); resetMenu(true); }} onCheckout={(trigger) => { void startRetailCheckout(trigger); }} onDetail={openDetail} />} cartQuantity={(id) => cart.filter((line) => line.productId === id).reduce((sum, line) => sum + line.quantity, 0)} /> : <>
       <header className="site-header">
         <h1 className="storefront-brand-heading">
           <a className="brand" href="#top" onClick={() => resetMenu(false)}>
@@ -1172,7 +1188,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
                     ? <>Đã gửi mã đơn tới <b>{orderEmail}</b>. Hãy kiểm tra cả mục thư rác nếu chưa thấy email.</>
                     : emailNotificationStatus === "sending"
                       ? <>Đang gửi mã đơn tới <b>{orderEmail}</b>…</>
-                      : "Chưa gửi được email xác nhận. Mã đơn vẫn ở phía trên; hãy lưu lại để tra cứu đơn."}
+                      : isRetail ? "Chưa gửi được email xác nhận. Bạn vẫn có thể xem đơn trong tài khoản mua hàng." : "Chưa gửi được email xác nhận. Mã đơn vẫn ở phía trên; hãy lưu lại để tra cứu đơn."}
                 </p>
                 {emailNotificationStatus === "failed" && (
                   <button
@@ -1201,7 +1217,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
                     {qrPaymentStatus === "waiting" && <BankTransferQr details={orderPayment.details} />}
                   </>
                 )}
-                <Link className="primary-button checkout-button" href="/track-order">Tra cứu đơn hàng <span>→</span></Link>
+                <Link className="primary-button checkout-button" href={isRetail ? "/customer/orders" : "/track-order"}>{isRetail ? "Xem đơn hàng của tôi" : "Tra cứu đơn hàng"} <span>→</span></Link>
                 <button className="success-return" type="button" onClick={closeOrderModal}>Quay lại cửa hàng</button>
               </div>
             )}

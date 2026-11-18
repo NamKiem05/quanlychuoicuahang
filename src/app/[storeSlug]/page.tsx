@@ -23,6 +23,7 @@ type StorePageProps = { params: Promise<{ storeSlug: string }> };
 export const instant = false;
 
 export async function generateMetadata({ params }: StorePageProps): Promise<Metadata> {
+  await connection();
   const { storeSlug } = await params;
   const supabase = await createClient();
   const { data: store } = await supabase
@@ -40,6 +41,7 @@ export async function generateMetadata({ params }: StorePageProps): Promise<Meta
 }
 
 export default async function StorePage({ params }: StorePageProps) {
+  await connection();
   const { storeSlug } = await params;
   const supabase = await createClient();
 
@@ -160,7 +162,6 @@ export default async function StorePage({ params }: StorePageProps) {
     createdAt: review.created_at,
   }));
 
-  await connection();
   return (
     <StorefrontClient
       store={{
