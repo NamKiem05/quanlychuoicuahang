@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
@@ -169,6 +170,7 @@ export default function ProductAdminList({
                 />
               </section>
               <ProductOptionsManager productId={selectedProduct.id} groups={selectedProduct.optionGroups} />
+              <Link className="secondary-submit" href={`/dashboard/menu/${selectedProduct.id}/variants`}>Quản lý biến thể sản phẩm →</Link>
             </div>
           </section>
         </div>
