@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import "./product-variants-link.css";
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
@@ -7,6 +8,7 @@ import { useFormStatus } from "react-dom";
 import { setProductVisibility } from "../actions";
 import ProductForm from "./product-form";
 import ProductOptionsManager, { type ProductOptionGroup } from "./product-options-manager";
+import type { MerchandiseMode } from "@/lib/merchandise-mode";
 
 const formatPrice = (price: number) => `${price.toLocaleString("vi-VN")}₫`;
 
@@ -29,7 +31,7 @@ function ProductVisibilityButton({ name, active }: { name: string; active: boole
   const label = active ? "Tạm ngừng bán" : "Bật bán";
   return (
     <button type="submit" className="product-visibility-button"
-      aria-label={pending ? `Đang cập nhật món ${name}` : `${label} món ${name}`} disabled={pending}>
+      aria-label={pending ? `Đang cập nhật sản phẩm ${name}` : `${label} sản phẩm ${name}`} disabled={pending}>
       {pending ? "Đang cập nhật…" : label}
     </button>
   );
@@ -41,12 +43,14 @@ export default function ProductAdminList({
   products,
   initialProductId,
   showLowStockThreshold,
+  mode,
 }: {
   storeId: string;
   categories: CategoryOption[];
   products: ManagedProduct[];
   initialProductId?: string;
   showLowStockThreshold: boolean;
+  mode: MerchandiseMode;
 }) {
   const [selectedProduct, setSelectedProduct] = useState<ManagedProduct | null>(() => products.find((product) => product.id === initialProductId) ?? null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -117,12 +121,13 @@ export default function ProductAdminList({
                 <span>
                   <b>{product.name}</b>
                   <span>{formatPrice(product.price_vnd)}</span>
-                  <span className="field-hint">{product.stock_quantity == null ? "Không giới hạn" : product.stock_quantity === 0 ? "Hết hàng" : `Còn ${product.stock_quantity} món`}</span>
+                  <span className="field-hint">{product.stock_quantity == null ? "Không giới hạn" : product.stock_quantity === 0 ? "Hết hàng" : `Còn ${product.stock_quantity} sản phẩm`}</span>
                 </span>
                 <span className={`status-badge status-${product.status}`}>{product.status === "active" ? "Đang bán" : product.status === "draft" ? "Bản nháp" : "Đã ẩn"}</span>
               </span>
-              <span className="product-editor-open-label">Quản lý món <span aria-hidden="true">↗</span></span>
+              <span className="product-editor-open-label">Quản lý sản phẩm <span aria-hidden="true">↗</span></span>
             </button>
+            {mode !== "food" && <Link className="product-variants-link" href={`/dashboard/menu/${product.id}/variants`} aria-label={`Quản lý biến thể của ${product.name}`}>Biến thể</Link>}
             <form className="product-visibility-form" action={setProductVisibility}>
               <input type="hidden" name="product_id" value={product.id} />
               <input type="hidden" name="status" value={product.status === "active" ? "archived" : "active"} />
@@ -130,7 +135,7 @@ export default function ProductAdminList({
             </form>
           </article>
         ))}
-        {!products.length && <div className="empty-row">Chưa có món nào. Thêm món đầu tiên ở biểu mẫu bên trên.</div>}
+        {!products.length && <div className="empty-row">Chưa có sản phẩm nào. Thêm sản phẩm đầu tiên ở biểu mẫu bên trên.</div>}
       </div>
 
       {selectedProduct && (
@@ -140,19 +145,20 @@ export default function ProductAdminList({
           <section ref={modalRef} className="manage-product-modal" role="dialog" aria-modal="true" aria-labelledby="manage-product-title">
             <header className="manage-product-modal-header">
               <div>
-                <span className="dashboard-kicker">QUẢN LÝ THỰC ĐƠN</span>
+                <span className="dashboard-kicker">QUẢN LÝ SẢN PHẨM</span>
                 <h2 id="manage-product-title">{selectedProduct.name}</h2>
                 <p>{formatPrice(selectedProduct.price_vnd)} · {selectedProduct.optionGroups.length} nhóm tùy chọn</p>
               </div>
-              <button ref={closeButtonRef} className="dialog-close" type="button" onClick={closeModal} aria-label="Đóng cửa sổ quản lý món">×</button>
+              <button ref={closeButtonRef} className="dialog-close" type="button" onClick={closeModal} aria-label="Đóng cửa sổ quản lý sản phẩm">×</button>
             </header>
             <div className="manage-product-modal-content">
               <section className="dashboard-card manage-product-edit-card">
                 <div className="dashboard-card-heading">
-                  <div><span className="card-number">01</span><h3>Thông tin món</h3></div>
+                  <div><span className="card-number">01</span><h3>Thông tin sản phẩm</h3></div>
                   <p>Cập nhật tên, giá, tồn kho và trạng thái.</p>
                 </div>
                 <ProductForm
+                  mode={mode}
                   showLowStockThreshold={showLowStockThreshold}
                   storeId={storeId}
                   categories={categories}
@@ -169,8 +175,8 @@ export default function ProductAdminList({
                   }}
                 />
               </section>
-              <ProductOptionsManager productId={selectedProduct.id} groups={selectedProduct.optionGroups} />
-              <Link className="secondary-submit" href={`/dashboard/menu/${selectedProduct.id}/variants`}>Quản lý biến thể sản phẩm →</Link>
+              <ProductOptionsManager mode={mode} productId={selectedProduct.id} groups={selectedProduct.optionGroups} />
+              {mode !== "food" && <Link className="secondary-submit" href={`/dashboard/menu/${selectedProduct.id}/variants`}>Quản lý biến thể sản phẩm →</Link>}
             </div>
           </section>
         </div>

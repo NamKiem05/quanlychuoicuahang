@@ -119,8 +119,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <div className="admin-stat-grid merchant-stat-grid">
         <article className="merchant-stat-card merchant-stat-products">
           <span className="merchant-stat-icon" aria-hidden="true">☷</span>
-          <div><small>MÓN ĐANG QUẢN LÝ</small><b>{productError ? "—" : productCount ?? 0}</b><span>{productError ? "Chưa tải được dữ liệu" : "Món trong thực đơn"}</span></div>
-          <Link href="/dashboard/menu" aria-label="Mở thực đơn">↗</Link>
+          <div><small>SẢN PHẨM ĐANG QUẢN LÝ</small><b>{productError ? "—" : productCount ?? 0}</b><span>{productError ? "Chưa tải được dữ liệu" : "Sản phẩm trong cửa hàng"}</span></div>
+          <Link href="/dashboard/menu" aria-label="Mở trang sản phẩm">↗</Link>
         </article>
         <article className="merchant-stat-card merchant-stat-orders">
           <span className="merchant-stat-icon" aria-hidden="true">↗</span>
@@ -158,7 +158,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <div className="merchant-section-heading"><div><span>TIỆN ÍCH</span><h2>Thao tác nhanh</h2></div></div>
         <div className="merchant-shortcuts">
           <Link href="/dashboard/orders"><span className="merchant-shortcut-icon">↗</span><span className="merchant-shortcut-copy"><b>Quản lý đơn hàng</b><small>Xem đơn mới và cập nhật trạng thái</small></span><span className="merchant-shortcut-arrow">→</span></Link>
-          <Link href="/dashboard/menu"><span className="merchant-shortcut-icon">☷</span><span className="merchant-shortcut-copy"><b>Cập nhật thực đơn</b><small>Thêm danh mục và chỉnh sửa món ăn</small></span><span className="merchant-shortcut-arrow">→</span></Link>
+          <Link href="/dashboard/menu"><span className="merchant-shortcut-icon">☷</span><span className="merchant-shortcut-copy"><b>Cập nhật sản phẩm</b><small>Thêm danh mục và chỉnh sửa sản phẩm</small></span><span className="merchant-shortcut-arrow">→</span></Link>
           <Link href="/dashboard/store"><span className="merchant-shortcut-icon">⌂</span><span className="merchant-shortcut-copy"><b>Thông tin cửa hàng</b><small>Địa chỉ, vị trí và website bán hàng</small></span><span className="merchant-shortcut-arrow">→</span></Link>
         </div>
       </section>

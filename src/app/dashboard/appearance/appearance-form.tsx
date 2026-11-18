@@ -317,7 +317,7 @@ export default function AppearanceForm({
         <section className="dashboard-card appearance-card">
           <div className="dashboard-card-heading">
             <div><span className="card-number">02</span><h2>Màu thương hiệu</h2></div>
-            <p>Chọn màu dùng cho tiêu đề, nút đặt món và các điểm nhấn.</p>
+            <p>Chọn màu dùng cho tiêu đề, nút đặt hàng và các điểm nhấn.</p>
           </div>
           <div className="appearance-theme-options" role="group" aria-label="Chọn màu giao diện">
             {storeThemes.map((option) => (
@@ -379,7 +379,7 @@ export default function AppearanceForm({
               );
             })}
           </div>
-          <p className="dashboard-help">Thực đơn luôn hiển thị để khách có thể chọn món và đặt hàng.</p>
+          <p className="dashboard-help">Danh sách sản phẩm luôn hiển thị để khách có thể chọn và đặt hàng.</p>
         </section>
         <AppearanceSaveButton uploading={uploading} />
         {uploading && <p className="dashboard-help appearance-upload-warning">Đợi ảnh tải xong trước khi lưu thay đổi.</p>}
@@ -393,7 +393,7 @@ export default function AppearanceForm({
               <span className="appearance-preview-logo">
                 {logoUrl ? <Image src={logoUrl} alt="" width={56} height={56} unoptimized /> : storeName.trim().charAt(0).toUpperCase()}
               </span>
-              <span><b>{storeName}</b><small>Thực đơn trực tuyến</small></span>
+              <span><b>{storeName}</b><small>Cửa hàng trực tuyến</small></span>
             </div>
             <div className="appearance-preview-flow">
               {sectionOrder.filter((section) => !hiddenSections.includes(section)).map((section) => (
@@ -404,14 +404,14 @@ export default function AppearanceForm({
                       </div>
                     )}
                   {section === "menu" && <>
-                    <div className="appearance-preview-actions"><b>Thực đơn nổi bật</b><span>Xem món →</span></div>
+                    <div className="appearance-preview-actions"><b>Sản phẩm nổi bật</b><span>Xem sản phẩm →</span></div>
                     {sampleProduct ? <div className="appearance-preview-product">
                       <span>{sampleProduct.image_url ? <Image src={sampleProduct.image_url} alt="" width={42} height={42} unoptimized /> : "🍲"}</span>
                       <div><b>{sampleProduct.name}</b></div><strong>{Number(sampleProduct.price_vnd).toLocaleString("vi-VN")}₫</strong>
-                    </div> : <small>Chưa có món đang bán để xem trước.</small>}
+                    </div> : <small>Chưa có sản phẩm đang bán để xem trước.</small>}
                   </>}
-                  {section === "reviews" && <><b>Đánh giá món ăn</b><small>★★★★★ · Khách hàng của quán</small></>}
-                  {section === "story" && <><b>Giới thiệu cửa hàng</b><small>{storeName} · Món ngon địa phương, đặt trực tiếp từ quán.</small></>}
+                  {section === "reviews" && <><b>Đánh giá sản phẩm</b><small>★★★★★ · Khách hàng của cửa hàng</small></>}
+                  {section === "story" && <><b>Giới thiệu cửa hàng</b><small>{storeName} · Khám phá sản phẩm và đặt hàng trực tiếp.</small></>}
                 </div>
               ))}
             </div>

@@ -23,7 +23,7 @@ export default async function MerchantReviewsPage({ searchParams }: { searchPara
     <main className="admin-content">
       <div className="dashboard-kicker">PHẢN HỒI KHÁCH HÀNG</div>
       <h1 className="admin-page-title">Đánh giá</h1>
-      <p className="dashboard-intro">Duyệt đánh giá và theo dõi phản hồi về món ăn của cửa hàng.</p>
+      <p className="dashboard-intro">Duyệt đánh giá và theo dõi phản hồi về sản phẩm của cửa hàng.</p>
       <Toast message={message} variant={query.message ? toastVariantForMessage(query.message) : "success"} />
       <section className="dashboard-card review-admin-card merchant-page-card">
         <div className="dashboard-card-heading">
@@ -41,7 +41,7 @@ export default async function MerchantReviewsPage({ searchParams }: { searchPara
             return (
               <article className="review-admin-row" key={review.id}>
                 <div className="review-admin-top">
-                  <div><b>{reviewItem?.product_name_snapshot ?? "Món đã đặt"}</b><span>{review.display_name} · {new Date(review.created_at).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</span></div>
+                  <div><b>{reviewItem?.product_name_snapshot ?? "Sản phẩm đã đặt"}</b><span>{review.display_name} · {new Date(review.created_at).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</span></div>
                   <span className={"status-badge status-" + review.status}>{reviewStatusLabels[review.status] ?? review.status}</span>
                 </div>
                 <div className="review-admin-stars" aria-label={review.rating + " trên 5 sao"}>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>

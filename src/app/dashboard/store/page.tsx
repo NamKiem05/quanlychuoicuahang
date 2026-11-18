@@ -54,7 +54,7 @@ export default async function MerchantStorePage({ searchParams }: { searchParams
       <section className="dashboard-card merchant-order-status-card">
         <div className="dashboard-card-heading">
           <div><span className="card-number">↗</span><h2>Nhận đơn trực tuyến</h2></div>
-          <p>{store.accepts_orders ? "Khách có thể đặt hàng trong giờ nhận đơn." : "Khách vẫn xem được thực đơn nhưng chưa thể đặt hàng."}</p>
+          <p>{store.accepts_orders ? "Khách có thể đặt hàng trong giờ nhận đơn." : "Khách vẫn xem được sản phẩm nhưng chưa thể đặt hàng."}</p>
         </div>
         <div className="merchant-order-status-row">
           <span className={"status-badge " + (store.accepts_orders ? "status-active" : "status-suspended")}>

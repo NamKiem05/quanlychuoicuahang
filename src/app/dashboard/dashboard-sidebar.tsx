@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import SidebarIcon from "@/app/sidebar-icon";
+import type { MerchandiseMode } from "@/lib/merchandise-mode";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -12,7 +13,7 @@ type MenuItem = { href?: string; label: string; icon: Parameters<typeof SidebarI
 const groups: { label: string; items: MenuItem[] }[] = [
   { label: "Tổng quan", items: [{ href: "/dashboard", label: "Dashboard", icon: "overview" }] },
   { label: "Kinh doanh", items: [
-    { href: "/dashboard/menu", label: "Sản phẩm", icon: "menu" },
+    { href: "/dashboard/menu", label: "Quản lý sản phẩm", icon: "menu" },
     { href: "/dashboard/menu#categories", label: "Danh mục", icon: "overview" },
     { href: "/dashboard/brands", label: "Thương hiệu", icon: "store" },
     { href: "/dashboard/orders", label: "Đơn hàng", icon: "orders" },
@@ -51,7 +52,8 @@ const groups: { label: string; items: MenuItem[] }[] = [
 ];
 const items = groups.flatMap((group) => group.items);
 
-export default function DashboardSidebar({ storeName, storeId, initialPendingOrders, premiumAvailable, platformName, logoUrl, brandsEnabled }: {
+export default function DashboardSidebar({ storeName, storeId, initialPendingOrders, premiumAvailable, platformName, logoUrl, brandsEnabled, mode }: {
+  mode: MerchandiseMode;
   brandsEnabled: boolean;
   platformName: string;
   logoUrl: string | null;
@@ -97,9 +99,9 @@ export default function DashboardSidebar({ storeName, storeId, initialPendingOrd
       void supabase.removeChannel(channel);
     };
   }, [storeId]);
-  const visibleGroups = (storeName ? groups : groups.slice(0, 1)).map((group) => ({ ...group, items: group.items.filter((item) => brandsEnabled || item.href !== "/dashboard/brands") }));
-  const mobileMainItems = storeName ? ["/dashboard", "/dashboard/orders", "/dashboard/menu", "/dashboard/promotions"].map((href) => items.find((item) => item.href === href)!) : items.slice(0, 1);
-  const mobileSettingsItems = storeName ? items.filter((item) => !mobileMainItems.includes(item) && (brandsEnabled || item.href !== "/dashboard/brands")) : [];
+  const visibleGroups = (storeName ? groups : groups.slice(0, 1)).map((group) => ({ ...group, items: group.items.filter((item) => brandsEnabled || item.href !== "/dashboard/brands").map((item) => mode === "food" && item.href === "/dashboard/menu" ? { ...item, label: "Quản lý thực đơn" } : item) }));
+  const mobileMainItems = storeName ? ["/dashboard", "/dashboard/orders", "/dashboard/menu", "/dashboard/promotions"].map((href) => items.find((item) => item.href === href)!).map((item) => mode === "food" && item.href === "/dashboard/menu" ? { ...item, label: "Món ăn" } : item) : items.slice(0, 1);
+  const mobileSettingsItems = storeName ? items.filter((item) => !mobileMainItems.some((main) => main.href === item.href && Boolean(item.href)) && (brandsEnabled || item.href !== "/dashboard/brands")) : [];
   const settingsIsActive = mobileSettingsItems.some((item) => item.href && !item.href.includes("#") && (pathname === item.href || pathname.startsWith(`${item.href}/`)));
 
   function isActive(href: string) {

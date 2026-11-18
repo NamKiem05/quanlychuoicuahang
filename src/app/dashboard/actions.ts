@@ -573,7 +573,7 @@ export async function deleteCategory(categoryId: string, _previous: string | nul
   const { data, error } = await supabase.from("categories").delete()
     .eq("store_id", storeId).eq("id", categoryId).select().maybeSingle();
 
-  if (error?.code === "23503") return "Danh mục vẫn còn món. Hãy chuyển các món sang danh mục khác hoặc chọn Chưa phân loại trước khi xóa.";
+  if (error?.code === "23503") return "Danh mục vẫn còn sản phẩm. Hãy chuyển sản phẩm sang danh mục khác hoặc chọn Chưa phân loại trước khi xóa.";
   if (error || !data) return "Chưa xóa được danh mục. Vui lòng tải lại trang và thử lại.";
 
   const imageUrl = typeof data.image_url === "string" ? data.image_url : null;
@@ -666,6 +666,8 @@ export async function createProduct(formData: FormData) {
   const name = formText(formData, "name");
   const priceVnd = Number(formText(formData, "price_vnd"));
   const categoryId = formText(formData, "category_id");
+  const brandId = formText(formData, "brand_id");
+  const variantsText = formText(formData, "variants_json");
   const imageUrl = formText(formData, "image_url");
   const description = formText(formData, "description");
   const stockText = formText(formData, "stock_quantity");
@@ -683,9 +685,18 @@ export async function createProduct(formData: FormData) {
     redirect("/dashboard/menu?message=invalid-product-image");
   }
 
+  if (variantsText) {
+    let variants: unknown;
+    try { variants = JSON.parse(variantsText); } catch { redirect("/dashboard/menu?message=invalid-variants"); }
+    if (!Array.isArray(variants) || variants.length < 1 || variants.length > 80 || variantsText.length > 100000) redirect("/dashboard/menu?message=invalid-variants");
+    const result = await supabase.rpc("create_product_with_variant_drafts", { target_store: storeId, product_name: name, product_slug: slug, product_category: categoryId || null, product_brand: brandId || null, product_description: description, product_image: imageUrl || null, product_price: priceVnd, product_low_stock: lowStockThreshold ?? 5, requested_variants: variants });
+    if (result.error) { await removeOwnedProductImage(supabase, imageUrl, storeId); redirect("/dashboard/menu?message=variant-create-failed"); }
+    redirect("/dashboard/menu?message=variant-product-created");
+  }
   const { error } = await supabase.from("products").insert({
     store_id: storeId,
     category_id: categoryId || null,
+    brand_id: brandId || null,
     name,
     slug,
     description,
@@ -756,7 +767,7 @@ export async function updateProduct(formData: FormData) {
 
   if (error) {
     if (imageUrl !== currentProduct.image_url) await removeOwnedProductImage(supabase, imageUrl, storeId);
-    redirect("/dashboard/menu?message=product-update-failed");
+    redirect(error.message.includes("variant_checkout_not_ready") ? "/dashboard/menu?message=variant-not-ready" : "/dashboard/menu?message=product-update-failed");
   }
 
   let cleanupFailed = false;
@@ -840,6 +851,7 @@ export async function setProductVisibility(formData: FormData) {
     .select("id")
     .maybeSingle();
 
+  if (error?.message.includes("variant_checkout_not_ready")) redirect("/dashboard/menu?message=variant-not-ready");
   if (error || !data) redirect("/dashboard/menu?message=product-visibility-failed");
   redirect(status === "active" ? "/dashboard/menu?message=product-shown" : "/dashboard/menu?message=product-hidden");
 }

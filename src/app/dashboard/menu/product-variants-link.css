@@ -1,0 +1,5 @@
+
+.product-admin-row { grid-template-columns: minmax(0,1fr) auto auto; }
+.product-variants-link { display: inline-flex; justify-content: center; align-items: center; min-height: 36px; padding: 6px 12px; border: 1px solid #cfe1f8; border-radius: 8px; background: #eff6ff; color: #246ac8; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.product-variants-link:hover { background: #e0efff; }
+@media (max-width: 700px) { .product-admin-row { grid-template-columns: 1fr auto; gap: 8px; }.product-admin-row .product-manage-trigger { grid-column: 1 / -1; }.product-admin-row .product-variants-link { justify-self: end; }.product-admin-row .product-visibility-form { justify-self: end; } }

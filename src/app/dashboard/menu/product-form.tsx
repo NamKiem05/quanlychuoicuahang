@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { createProduct, deleteProduct, setProductVisibility, updateProduct } from "../actions";
 import ProductImageField from "./product-image-field";
+import VariantBuilder from "./variant-builder";
+import type { MerchandiseMode } from "@/lib/merchandise-mode";
 
 type CategoryOption = { id: string; name: string };
 type Product = {
@@ -22,13 +24,18 @@ export default function ProductForm({
   categories,
   product,
   showLowStockThreshold,
+  brands = [],
+  mode = "general",
 }: {
   storeId: string;
   categories: CategoryOption[];
   product?: Product;
   showLowStockThreshold: boolean;
+  brands?: { id: string; name: string }[];
+  mode?: MerchandiseMode;
 }) {
   const [isUploading, setIsUploading] = useState(false);
+  const [hasVariants, setHasVariants] = useState(false);
 
   return (
     <>
@@ -37,7 +44,7 @@ export default function ProductForm({
         {product ? (
           <>
             <div className="form-row">
-              <label>Tên món<input name="name" defaultValue={product.name} required maxLength={160} /></label>
+              <label>{mode === "food" ? "Tên món" : "Tên sản phẩm"}<input name="name" defaultValue={product.name} required maxLength={160} /></label>
               <label>Giá bán (đồng)<input name="price_vnd" type="number" min="0" step="1000" defaultValue={product.price_vnd} required /></label>
             </div>
             <div className="form-row">
@@ -47,21 +54,24 @@ export default function ProductForm({
           </>
         ) : (
           <>
-            <label>Tên món<input name="name" required maxLength={160} placeholder="Tên sản phẩm" /></label>
+            <label>Tên sản phẩm<input name="name" required maxLength={160} placeholder={mode === "food" ? "Tên món ăn hoặc đồ uống" : "Tên sản phẩm"} /></label>
             <label>Giá bán (đồng)<input name="price_vnd" type="number" min="0" step="1000" required placeholder="59000" /></label>
             <label>Danh mục<select name="category_id" defaultValue=""><option value="">Chưa phân loại</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+            {brands.length > 0 && <label>Thương hiệu<select name="brand_id" defaultValue=""><option value="">Chưa chọn thương hiệu</option>{brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select></label>}
           </>
         )}
         <div className="form-row">
-          <label>Số lượng tồn kho <span className="field-hint">Để trống nếu không giới hạn số lượng</span><input name="stock_quantity" type="number" min="0" max="2147483647" step="1" defaultValue={product?.stock_quantity ?? ""} placeholder="Không giới hạn" /></label>
+          {!hasVariants && <label>Số lượng tồn kho <span className="field-hint">Để trống nếu không giới hạn số lượng</span><input name="stock_quantity" type="number" min="0" max="2147483647" step="1" defaultValue={product?.stock_quantity ?? ""} placeholder="Không giới hạn" /></label>}
           {showLowStockThreshold && <label>Ngưỡng cảnh báo tồn kho <span className="field-hint">Cảnh báo khi tồn kho bằng hoặc thấp hơn ngưỡng</span><input name="low_stock_threshold" type="number" min="0" max="2147483647" step="1" defaultValue={product?.low_stock_threshold ?? 5} required /></label>}
         </div>
-        <div className="product-image-form-field"><span>Ảnh món ăn <span className="field-hint">JPG, PNG hoặc WebP · tối đa 5 MB</span></span><ProductImageField storeId={storeId} initialUrl={product?.image_url ?? ""} onUploadingChange={setIsUploading} /></div>
-        <label>Mô tả<textarea name="description" rows={2} maxLength={2000} defaultValue={product?.description ?? ""} placeholder="Mô tả ngắn về món ăn" /></label>
+        <div className="product-image-form-field"><span>{mode === "food" ? "Ảnh món" : "Ảnh sản phẩm"} <span className="field-hint">JPG, PNG hoặc WebP · tối đa 5 MB</span></span><ProductImageField storeId={storeId} initialUrl={product?.image_url ?? ""} onUploadingChange={setIsUploading} /></div>
+        <label>Mô tả<textarea name="description" rows={2} maxLength={2000} defaultValue={product?.description ?? ""} placeholder={mode === "food" ? "Mô tả ngắn về món" : "Mô tả ngắn về sản phẩm"} /></label>
+        {!product && mode !== "food" && <VariantBuilder onEnabledChange={setHasVariants} />}
+        {!product && mode === "food" && <p className="dashboard-help">Sau khi tạo món, mở quản lý món để thêm size, topping và các lựa chọn khác.</p>}
         {product ? (
           <button className="secondary-submit" type="submit" disabled={isUploading}>{isUploading ? "Đang tải ảnh..." : "Lưu thay đổi"}</button>
         ) : (
-          <button className="primary-button dashboard-submit" type="submit" disabled={isUploading}>{isUploading ? "Đang tải ảnh..." : "Thêm vào thực đơn"}<span>→</span></button>
+          <button className="primary-button dashboard-submit" type="submit" disabled={isUploading}>{isUploading ? "Đang tải ảnh..." : (mode === "food" ? "Thêm món" : "Thêm sản phẩm")}<span>→</span></button>
         )}
       </form>
       {product && (
@@ -69,13 +79,13 @@ export default function ProductForm({
           <form action={setProductVisibility}>
             <input type="hidden" name="product_id" value={product.id} />
             <input type="hidden" name="status" value={product.status === "active" ? "archived" : "active"} />
-            <button className="secondary-submit" type="submit">{product.status === "active" ? "Ẩn món khỏi cửa hàng" : "Hiện món trên cửa hàng"}</button>
+            <button className="secondary-submit" type="submit">{product.status === "active" ? "Ẩn sản phẩm khỏi cửa hàng" : "Hiện sản phẩm trên cửa hàng"}</button>
           </form>
           <form action={deleteProduct} onSubmit={(event) => {
-            if (!window.confirm(`Bạn có chắc muốn xóa món “${product.name}” không? Thao tác này không thể hoàn tác.`)) event.preventDefault();
+            if (!window.confirm(`Bạn có chắc muốn xóa sản phẩm “${product.name}” không? Thao tác này không thể hoàn tác.`)) event.preventDefault();
           }}>
             <input type="hidden" name="product_id" value={product.id} />
-            <button className="danger-submit" type="submit">Xóa món</button>
+            <button className="danger-submit" type="submit">Xóa sản phẩm</button>
           </form>
         </div>
       )}

@@ -46,8 +46,10 @@ export async function createVariants(form: FormData) {
 export async function updateVariant(form: FormData) {
   const ctx = await context(form), id = String(form.get("variant_id") ?? ""), sku = String(form.get("sku") ?? "").trim();
   const price = number(form, "price", 1000000000), stock = number(form, "stock", 10000000);
-  if (!uuid.test(id) || sku.length > 100 || price === null || stock === null) finish(ctx.product, "invalid");
-  const result = await ctx.supabase.from("product_variant_drafts").update({ sku: sku || null, price_vnd: price, stock_quantity: stock, updated_at: new Date().toISOString() }).eq("id", id).eq("product_id", ctx.product).eq("store_id", ctx.store.id).select("id").maybeSingle();
+  const costText = String(form.get("cost") ?? "").trim();
+  const cost = costText === "" ? null : number(form, "cost", 1000000000);
+  if (!uuid.test(id) || sku.length > 100 || price === null || stock === null || (costText !== "" && cost === null)) finish(ctx.product, "invalid");
+  const result = await ctx.supabase.from("product_variant_drafts").update({ sku: sku || null, price_vnd: price, cost_vnd: cost, stock_quantity: stock, updated_at: new Date().toISOString() }).eq("id", id).eq("product_id", ctx.product).eq("store_id", ctx.store.id).select("id").maybeSingle();
   if (result.error || !result.data) finish(ctx.product, result.error?.code === "23505" ? "sku-duplicate" : "failed");
   finish(ctx.product, "updated");
 }

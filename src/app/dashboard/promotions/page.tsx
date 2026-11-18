@@ -40,7 +40,7 @@ export default async function MerchantPromotionsPage({ searchParams }: { searchP
     <main className="admin-content">
       <div className="dashboard-kicker">ƯU ĐÃI CHO KHÁCH HÀNG</div>
       <h1 className="admin-page-title">Khuyến mãi</h1>
-      <p className="dashboard-intro">Tạo mã giảm giá cho khách đặt món tại {store.name}. Mã và số tiền giảm được máy chủ xác thực khi tạo đơn; mã đã tạo có thể bật hoặc tắt.</p>
+      <p className="dashboard-intro">Tạo mã giảm giá cho khách đặt hàng tại {store.name}. Mã và số tiền giảm được máy chủ xác thực khi tạo đơn; mã đã tạo có thể bật hoặc tắt.</p>
       <Toast message={message} variant={query.message ? toastVariantForMessage(query.message) : "success"} />
 
       <section className="dashboard-card promotion-create-card">
@@ -56,7 +56,7 @@ export default async function MerchantPromotionsPage({ searchParams }: { searchP
           <label>Bắt đầu từ<input name="starts_on" type="date" /></label>
           <label>Ngày hết hạn<input name="ends_on" type="date" /></label>
           <label>Giới hạn lượt dùng<input name="usage_limit" type="number" min="1" max="1000000" step="1" placeholder="Để trống nếu không giới hạn" /></label>
-          <p className="promotion-form-help">Ngày bắt đầu để trống nghĩa là bắt đầu từ hôm nay. Mức giảm phần trăm tối đa là 100% và chỉ áp dụng trên tiền món, không trừ phí giao hàng.</p>
+          <p className="promotion-form-help">Ngày bắt đầu để trống nghĩa là bắt đầu từ hôm nay. Mức giảm phần trăm tối đa là 100% và chỉ áp dụng trên tiền sản phẩm, không trừ phí giao hàng.</p>
           <button className="secondary-submit" type="submit">+ Tạo mã khuyến mãi</button>
         </form>
       </section>

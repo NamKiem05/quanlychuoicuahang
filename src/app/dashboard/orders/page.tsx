@@ -143,7 +143,7 @@ export default async function MerchantOrdersPage({ searchParams }: { searchParam
               <tr className={hasWorkRemaining ? undefined : "is-order-inactive"} key={order.id}>
                 <td><b className="admin-order-code">{order.public_code}</b><small>#{order.id.slice(0, 8)}</small></td>
                 <td><div className="admin-table-customer"><b>{order.customer_name}</b><a href={`tel:${order.customer_phone}`}>{order.customer_phone}</a></div></td>
-                <td><div className="admin-table-products"><span>{itemPreview || "Không có thông tin món"}</span>{extraItemCount > 0 && <small>và {extraItemCount} món khác</small>}</div></td>
+                <td><div className="admin-table-products"><span>{itemPreview || "Không có thông tin sản phẩm"}</span>{extraItemCount > 0 && <small>và {extraItemCount} sản phẩm khác</small>}</div></td>
                 <td><b className="admin-order-total">{formatPrice(Number(order.total_vnd))}</b></td>
                 <td><span className={`status-badge status-${order.status}`}>{order.status === "ready" && order.fulfillment === "delivery" ? "Sẵn sàng giao" : orderStatusLabels[order.status] ?? order.status}</span>{cancellationPending && <small className="merchant-cancellation-flag">Khách yêu cầu hủy</small>}</td>
                 <td><div className="admin-table-payment"><span>{paymentMethodLabels[order.payment_method] ?? order.payment_method}</span><small className={paymentIsSettled ? "is-paid" : "is-unpaid"}>{paymentLabel}</small></div></td>

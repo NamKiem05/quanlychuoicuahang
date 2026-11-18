@@ -37,8 +37,8 @@ export default function ProductImageField({
   onUploadingChange: (uploading: boolean) => void;
   kind?: "product" | "category" | "brand";
 }) {
-  const imageLabel = kind === "brand" ? "Logo thương hiệu" : kind === "category" ? "Ảnh danh mục" : "Ảnh món ăn";
-  const saveLabel = kind === "brand" ? "lưu thương hiệu" : kind === "category" ? "thêm danh mục" : "lưu món";
+  const imageLabel = kind === "brand" ? "Logo thương hiệu" : kind === "category" ? "Ảnh danh mục" : "Ảnh sản phẩm";
+  const saveLabel = kind === "brand" ? "lưu thương hiệu" : kind === "category" ? "thêm danh mục" : "lưu sản phẩm";
   const fileInput = useRef<HTMLInputElement>(null);
   const [imageUrl, setImageUrl] = useState(initialUrl);
   const [previewUrl, setPreviewUrl] = useState(initialUrl);

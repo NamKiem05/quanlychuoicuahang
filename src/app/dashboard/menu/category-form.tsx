@@ -16,7 +16,7 @@ export default function CategoryForm({ storeId, imagesAvailable, category }: { s
       <form className="dashboard-form compact-form" action={action}>
         <label>
           Tên danh mục
-          <input name="name" required maxLength={100} placeholder="Ví dụ: Món chính" value={name} onChange={(event) => setName(event.target.value)} />
+          <input name="name" required maxLength={100} placeholder="Ví dụ: Áo, đồ uống, phụ kiện" value={name} onChange={(event) => setName(event.target.value)} />
         </label>
         {imagesAvailable ? (
           <fieldset className="product-image-form-field" disabled={pending}>

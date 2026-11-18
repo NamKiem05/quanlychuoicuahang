@@ -1,5 +1,6 @@
 "use client";
 
+import type { MerchandiseMode } from "@/lib/merchandise-mode";
 import { deleteProductOptionGroup, saveProductOptionGroup } from "../actions";
 
 export type ProductOption = {
@@ -48,14 +49,16 @@ function OptionGroupForm({
 export default function ProductOptionsManager({
   productId,
   groups,
+  mode,
 }: {
   productId: string;
   groups: ProductOptionGroup[];
+  mode: MerchandiseMode;
 }) {
   return (
-    <section className="product-options-manager" aria-label="Tùy chọn món">
+    <section className="product-options-manager" aria-label="Tùy chọn sản phẩm">
       <div className="product-options-heading">
-        <div><b>Tùy chọn món</b><small>Size, topping hoặc cách chế biến</small></div>
+        <div><b>{mode === "food" ? "Size, topping và lựa chọn món" : "Tùy chọn sản phẩm"}</b><small>{mode === "food" ? "Ví dụ: size, topping, mức đường hoặc đá" : "Ví dụ: lựa chọn bổ sung hoặc dịch vụ đi kèm"}</small></div>
         <span>{groups.length} nhóm</span>
       </div>
       {groups.map((group) => (
@@ -80,7 +83,7 @@ export default function ProductOptionsManager({
           <OptionGroupForm productId={productId} />
         </div>
       ) : (
-        <p className="dashboard-help">Mỗi món có thể có tối đa 40 nhóm tùy chọn.</p>
+        <p className="dashboard-help">Mỗi sản phẩm có thể có tối đa 40 nhóm tùy chọn.</p>
       )}
     </section>
   );
