@@ -21,7 +21,7 @@ export default async function AdminStoreDetail({ params, searchParams }: { param
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(storeId)) notFound();
   const supabase = await createClient();
   await requirePlatformAdminAccess(supabase);
-  const storeResult = await supabase.from("stores").select("id, name, slug, description, phone, address, status, created_at, created_by, billing_owner_id").eq("id", storeId).maybeSingle();
+  const storeResult = await createAdminClient().from("stores").select("id, name, slug, description, phone, address, status, created_at, created_by, billing_owner_id").eq("id", storeId).maybeSingle();
   if (storeResult.error) return <main className="admin-content"><p className="admin-error" role="alert">Không tải được thông tin cửa hàng. Vui lòng thử lại.</p><Link href="/admin/stores">← Về danh sách cửa hàng</Link></main>;
   const store = storeResult.data;
   if (!store) notFound();

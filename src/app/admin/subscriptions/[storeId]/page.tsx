@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePlatformAdminAccess } from "@/lib/platform-account";
 import { findMerchantPlan, formatPlanAmount } from "@/lib/merchant-plans";
 import "../subscriptions.css";
@@ -17,7 +18,7 @@ export default async function SubscriptionDetail({ params, searchParams }: { par
   const [{ storeId }, query, supabase] = await Promise.all([params, searchParams, createClient()]);
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(storeId)) notFound();
   await requirePlatformAdminAccess(supabase);
-  const storeResult = await supabase.from("stores").select("id, name, slug, billing_owner_id").eq("id", storeId).maybeSingle();
+  const storeResult = await createAdminClient().from("stores").select("id, name, slug, billing_owner_id").eq("id", storeId).maybeSingle();
   if (storeResult.error) return <main className="admin-content"><p className="admin-error">Không tải được cửa hàng.</p><Link href="/admin/subscriptions">← Danh sách đăng ký</Link></main>;
   const store = storeResult.data;
   if (!store) notFound();

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePlatformAdminAccess } from "@/lib/platform-account";
 import { findMerchantPlan } from "@/lib/merchant-plans";
 import "./subscriptions.css";
@@ -18,7 +19,7 @@ export default async function Subscriptions({ searchParams }: { searchParams: Pr
   const search = typeof query.q === "string" ? query.q.trim().replace(/[^\p{L}\p{N}\s.-]/gu, "").slice(0, 60) : "";
   const page = typeof query.page === "string" && /^[1-9]\d{0,5}$/.test(query.page) ? Number(query.page) : 1;
   const start = (page - 1) * pageSize;
-  let request = supabase.from("stores").select("id, name, slug, billing_owner_id", { count: "exact" }).order("created_at", { ascending: false }).order("id").range(start, start + pageSize - 1);
+  let request = createAdminClient().from("stores").select("id, name, slug, billing_owner_id", { count: "exact" }).order("created_at", { ascending: false }).order("id").range(start, start + pageSize - 1);
   if (search) request = request.or(`name.ilike.%${search}%,slug.ilike.%${search}%`);
   const stores = await request;
   const rows = await Promise.all((stores.data ?? []).map(async (store) => {

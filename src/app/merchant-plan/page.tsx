@@ -36,7 +36,7 @@ export default async function MerchantPlanPage({ searchParams }: { searchParams:
   const [upgradePending, active, owner, cancellationSchema, paymentAvailability] = await Promise.all([
     supabase.from("merchant_plan_payments").select(`${pendingFields}, upgrade_amount_vnd, upgrade_expires_at`).eq("user_id", userId).eq("status", "pending").maybeSingle(),
     getCurrentMerchantPlan(supabase, userId),
-    store ? supabase.from("stores").select("billing_owner_id").eq("id", store.id).maybeSingle() : { data: null },
+    store ? supabase.rpc("get_store_billing_owner", { requested_store: store.id }).maybeSingle<{ billing_owner_id: string | null }>() : { data: null },
     supabase.from("merchant_plan_payments").select("cancelled_at").eq("user_id", userId).limit(0),
     getMerchantPlanPaymentAvailability(supabase),
   ]);
