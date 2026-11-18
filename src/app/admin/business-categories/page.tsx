@@ -13,6 +13,7 @@ const messages: Record<string, string> = {
   invalid: "Thông tin chưa hợp lệ. Tên cần có ít nhất hai ký tự và tạo được mã ngành hàng.",
   duplicate: "Tên hoặc mã ngành hàng đã tồn tại. Hãy chọn tên khác.",
   failed: "Chưa thực hiện được thao tác. Kiểm tra cơ sở dữ liệu và thử lại.",
+  used: "Không thể xóa ngành hàng đang được cửa hàng sử dụng.",
 };
 
 function CategoryForm({ category }: { category?: Category }) {
@@ -39,7 +40,7 @@ export default async function BusinessCategoriesPage({ searchParams }: { searchP
   function pageHref(next: number) { const params = new URLSearchParams({ page: String(next) }); if (search) params.set("q", search); return `/admin/business-categories?${params}`; }
   return <main className="admin-content business-categories-page">
     <header className="business-heading"><span aria-hidden="true">▦</span><div><div className="dashboard-kicker">QUẢN LÝ NỀN TẢNG</div><h1 className="admin-page-title">Danh mục ngành hàng</h1><p>Quản lý các ngành hàng của nền tảng.</p></div><a className="business-primary" href="#add-category">+ Thêm ngành hàng</a></header>
-    <p className="business-note">Danh mục này dành cho toàn nền tảng và được quản lý riêng với danh mục món của từng cửa hàng. Hiện chưa được gắn vào hồ sơ cửa hàng.</p>
+    <p className="business-note">Danh mục này dành cho toàn nền tảng và được quản lý riêng với danh mục món của từng cửa hàng. Chủ cửa hàng chọn ngành hàng khi tạo cửa hàng.</p>
     {message && <p className={["created", "updated", "deleted"].includes(query.message ?? "") ? "business-success" : "admin-error"} role="status">{message}</p>}
     {result.error && <p className="admin-error" role="alert">Không tải được danh mục. Cần chạy migration 202611180008_business_categories.sql và kiểm tra quyền quản trị.</p>}
     <form className="business-search" method="get"><label>Tìm ngành hàng<input type="search" name="q" maxLength={80} defaultValue={search} placeholder="Tên hoặc mã ngành hàng..." /></label><button type="submit">Tìm kiếm</button>{search && <Link href="/admin/business-categories">Xóa lọc</Link>}</form>

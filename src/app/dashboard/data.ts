@@ -52,6 +52,7 @@ export const reviewStatusLabels: Record<string, string> = {
 
 export const dashboardMessages: Record<string, string> = {
   "store-changed": "Cửa hàng đang làm việc đã thay đổi. Hãy kiểm tra lại thông tin trước khi thực hiện thao tác.",
+  "invalid-business-category": "Hãy chọn ngành hàng hợp lệ trước khi tạo cửa hàng.",
   "invalid-store": "Hãy nhập tên cửa hàng và địa chỉ trang hợp lệ.",
   "invalid-store-profile": "Hãy nhập tên cửa hàng từ 2 đến 120 ký tự và đường dẫn hợp lệ.",
   "store-slug-taken": "Đường dẫn này đã được cửa hàng khác sử dụng. Hãy chọn đường dẫn khác.",

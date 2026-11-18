@@ -32,6 +32,7 @@ export async function deleteBusinessCategory(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   if (!uuid.test(id) || formData.get("confirm_delete") !== "yes") redirect("/admin/business-categories?message=invalid");
   const result = await supabase.from("business_categories").delete().eq("id", id).select("id").maybeSingle();
+  if (result.error?.code === "23503") redirect("/admin/business-categories?message=used");
   if (result.error || !result.data) redirect("/admin/business-categories?message=failed");
   revalidatePath("/admin/business-categories");
   redirect("/admin/business-categories?message=deleted");

@@ -3,10 +3,12 @@ import Link from "next/link";
 import OverviewRevenue, { type RevenueSearchParams } from "@/app/overview-revenue";
 import { createStore } from "./actions";
 import StoreLocationPicker from "./store/location-picker";
+import StoreNameFields from "./store-name-fields";
 import { dashboardMessages, formatPrice, getMerchantContext, orderStatusLabels } from "./data";
 import Toast from "@/app/toast";
 import { toastVariantForMessage } from "@/lib/toast";
 import "./merchant-overview.css";
+import "./store-setup.css";
 
 type MerchantOverview = {
   revenue_today: number; revenue_month: number; revenue_year: number;
@@ -24,32 +26,19 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const message = query.message ? dashboardMessages[query.message] : undefined;
 
   if (!store) {
+    const categories = await supabase.rpc("get_business_category_options");
     return (
-      <main className="admin-content">
-        <div className="dashboard-kicker">KHU VỰC CHỦ CỬA HÀNG</div>
-        <h1 className="admin-page-title">Tạo gian hàng đầu tiên</h1>
-        <p className="dashboard-intro">Tạo trang bán hàng riêng để bắt đầu đăng món và nhận đơn.</p>
+      <main className="admin-content store-setup-page">
+        <header className="store-setup-hero"><div><span className="store-setup-eyebrow">BẮT ĐẦU CÙNG GROWDESK</span><h1>Tạo cửa hàng của bạn</h1><p>Chỉ vài thông tin cơ bản để bắt đầu xây dựng không gian bán hàng của riêng bạn.</p></div><span className="store-setup-hero-icon" aria-hidden="true">✦</span></header>
         <Toast message={message} variant={query.message ? toastVariantForMessage(query.message) : "success"} />
-        <section className="dashboard-card store-setup-card">
-          <div className="dashboard-card-heading">
-            <div><span className="card-number">01</span><h2>Thông tin cửa hàng</h2></div>
-            <p>Tên cửa hàng sẽ hiện trên website riêng của bạn.</p>
-          </div>
-          <form className="dashboard-form" action={createStore}>
-            <label>Tên cửa hàng<input name="name" required maxLength={120} placeholder="Ví dụ: Bếp Nhà Mơ" /></label>
-            <label>Đường dẫn cửa hàng <span className="field-hint">Có thể tự tạo từ tên nếu để trống</span><input name="slug" maxLength={80} placeholder="bep-nha-mo" /></label>
-            <div className="form-row">
-              <label>Số điện thoại<input name="phone" type="tel" maxLength={30} placeholder="090 123 4567" /></label>
-              <label>Địa chỉ<input name="address" maxLength={255} placeholder="Địa chỉ cửa hàng" /></label>
-            </div>
-            <fieldset className="store-setup-location">
-              <legend>Vị trí cửa hàng <span className="field-hint">Tùy chọn</span></legend>
-              <StoreLocationPicker initialLatitude={null} initialLongitude={null} embedded />
-              <p className="dashboard-help">Bạn có thể bổ sung vị trí sau trong mục Quản lý cửa hàng.</p>
-            </fieldset>
-            <button className="primary-button dashboard-submit" type="submit">Tạo gian hàng <span>→</span></button>
-          </form>
-        </section>
+        <div className="store-setup-layout"><section className="store-setup-main"><form className="store-setup-form" action={createStore}>
+          <div className="store-setup-heading"><span>01</span><div><h2>Thông tin cửa hàng</h2><p>Giới thiệu cửa hàng với khách hàng của bạn.</p></div></div>
+          <div className="store-setup-fields"><label>Ngành hàng <b>*</b><select name="business_category_id" required defaultValue="" disabled={Boolean(categories.error) || !categories.data?.length}><option value="" disabled>Chọn ngành hàng phù hợp</option>{categories.data?.map((category: { id: string; name: string }) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><StoreNameFields /><label>Số điện thoại <small>Không bắt buộc</small><input name="phone" type="tel" maxLength={30} placeholder="090 123 4567" /></label><label>Địa chỉ <small>Không bắt buộc</small><input name="address" maxLength={255} placeholder="Địa chỉ cửa hàng" /></label></div>
+          {categories.error ? <p className="store-setup-alert" role="alert">Không tải được ngành hàng. Hãy liên hệ quản trị viên để kiểm tra cấu hình.</p> : !categories.data?.length ? <p className="store-setup-alert" role="alert">Chưa có ngành hàng. Quản trị viên cần thêm ngành hàng trước khi tạo cửa hàng.</p> : null}
+          <div className="store-setup-divider" /><div className="store-setup-heading"><span>02</span><div><h2>Vị trí cửa hàng <small>Tùy chọn</small></h2><p>Giúp khách hàng tìm thấy cửa hàng của bạn dễ dàng hơn.</p></div></div>
+          <fieldset className="store-setup-location"><legend className="store-setup-sr-only">Vị trí cửa hàng</legend><StoreLocationPicker initialLatitude={null} initialLongitude={null} embedded /></fieldset>
+          <div className="store-setup-footer"><p><b>*</b> Thông tin bắt buộc</p><button className="store-setup-submit" type="submit" disabled={Boolean(categories.error) || !categories.data?.length}>Tạo cửa hàng <span aria-hidden="true">→</span></button></div>
+        </form></section><aside className="store-setup-aside"><div className="store-setup-aside-icon" aria-hidden="true">✧</div><h2>Mọi khởi đầu đều đơn giản</h2><p>Thiết lập cửa hàng theo cách phù hợp với bạn.</p><ul><li><span>1</span><div><b>Chọn ngành hàng</b><small>Tìm lĩnh vực kinh doanh phù hợp.</small></div></li><li><span>2</span><div><b>Thêm thông tin</b><small>Đặt tên và thông tin liên hệ.</small></div></li><li><span>3</span><div><b>Bắt đầu quản lý</b><small>Thêm sản phẩm và thiết lập bán hàng.</small></div></li></ul><div className="store-setup-aside-note">Bạn có thể cập nhật thông tin cửa hàng sau khi tạo.</div></aside></div>
       </main>
     );
   }

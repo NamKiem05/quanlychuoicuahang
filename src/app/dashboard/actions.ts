@@ -163,6 +163,8 @@ export async function changeAccountPassword(
 
 export async function createStore(formData: FormData) {
   const { supabase } = await getSessionUser();
+  const categoryId = formText(formData, "business_category_id");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(categoryId)) redirect("/dashboard?message=invalid-business-category");
   const name = formText(formData, "name");
   const phone = formText(formData, "phone");
   const address = formText(formData, "address");
@@ -187,12 +189,14 @@ export async function createStore(formData: FormData) {
   }
 
   const { error } = await supabase.rpc("create_store_with_merchant_plan", {
+    category_id: categoryId,
     store_name: name,
     store_slug: slug,
     store_phone: phone || null,
     store_address: address || null,
     store_location: location,
   });
+  if (error?.message === "invalid_business_category") redirect("/dashboard?message=invalid-business-category");
   if (error?.message === "active_plan_required") redirect("/merchant-plan");
   if (error?.message === "reserved_store_slug") redirect("/dashboard?message=invalid-reserved-store-slug");
   if (error) redirect("/dashboard?message=store-create-failed");
