@@ -24,10 +24,12 @@ function LoginFromUrl() {
   const callbackError = params.get("message") === "verification-failed";
   const accessError = params.get("message") === "account-access-failed";
   const invitationNext = params.get("next") === "staff-invitations";
-  return <LoginForm key={`${mode}:${plan?.id ?? ""}:${invitationNext}`} initialMode={mode} plan={plan} callbackError={callbackError} accessError={accessError} invitationNext={invitationNext} />;
+  const storeParam = params.get("store") ?? "";
+  const returnStore = /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(storeParam) && storeParam.length <= 80 ? storeParam : null;
+  return <LoginForm key={`${mode}:${plan?.id ?? ""}:${invitationNext}:${returnStore ?? ""}`} initialMode={mode} plan={plan} callbackError={callbackError} accessError={accessError} invitationNext={invitationNext} returnStore={returnStore} />;
 }
 
-function LoginForm({ initialMode, plan, callbackError, accessError, invitationNext }: { initialMode: "signin" | "signup"; plan: ReturnType<typeof findMerchantPlan>; callbackError: boolean; accessError: boolean; invitationNext: boolean }) {
+function LoginForm({ initialMode, plan, callbackError, accessError, invitationNext, returnStore }: { initialMode: "signin" | "signup"; plan: ReturnType<typeof findMerchantPlan>; callbackError: boolean; accessError: boolean; invitationNext: boolean; returnStore: string | null }) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const [mode, setMode] = useState(initialMode);
@@ -50,7 +52,7 @@ function LoginForm({ initialMode, plan, callbackError, accessError, invitationNe
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) { setErrorMessage("Hãy nhập email hợp lệ để yêu cầu xác minh."); return; }
     setIsSubmitting(true); setErrorMessage(""); setNotice("");
     try {
-      const { error } = await supabase.auth.resend({ type: "signup", email: address, options: { emailRedirectTo: `${window.location.origin}/auth/callback${invitationNext ? "?next=staff-invitations" : ""}` } });
+      const { error } = await supabase.auth.resend({ type: "signup", email: address, options: { emailRedirectTo: `${window.location.origin}/auth/callback${returnStore ? `?store=${encodeURIComponent(returnStore)}` : invitationNext ? "?next=staff-invitations" : ""}` } });
       if (error) setErrorMessage("Chưa gửi được yêu cầu xác minh. Hãy kiểm tra cấu hình email và thử lại sau.");
       else setNotice("Nếu tài khoản cần xác minh, email hướng dẫn sẽ được gửi đến địa chỉ đã nhập.");
     } catch { setErrorMessage("Chưa gửi được yêu cầu xác minh. Vui lòng thử lại sau."); }
@@ -79,7 +81,7 @@ function LoginForm({ initialMode, plan, callbackError, accessError, invitationNe
         password,
         options: {
           data: { display_name: name.trim(), phone: normalizedPhone, requested_plan: plan?.id },
-          emailRedirectTo: `${window.location.origin}/auth/callback${invitationNext ? "?next=staff-invitations" : ""}`,
+          emailRedirectTo: `${window.location.origin}/auth/callback${returnStore ? `?store=${encodeURIComponent(returnStore)}` : invitationNext ? "?next=staff-invitations" : ""}`,
         },
       });
 
@@ -89,7 +91,7 @@ function LoginForm({ initialMode, plan, callbackError, accessError, invitationNe
         return;
       }
       if (data.session) {
-        router.replace(invitationNext ? "/staff-invitations" : "/dashboard");
+        router.replace(returnStore ? `/${returnStore}?checkout=1` : invitationNext ? "/staff-invitations" : "/dashboard");
         router.refresh();
       } else {
         setNotice("Tài khoản đã tạo. Hãy mở email xác nhận để tiếp tục đăng nhập.");
@@ -102,6 +104,11 @@ function LoginForm({ initialMode, plan, callbackError, accessError, invitationNe
     setIsSubmitting(false);
     if (error) {
       setErrorMessage(error.status === 429 || error.code === "over_request_rate_limit" ? "Có quá nhiều yêu cầu đăng nhập. Vui lòng đợi một lúc rồi thử lại." : "Không đăng nhập được. Hãy kiểm tra email và mật khẩu.");
+      return;
+    }
+    if (returnStore) {
+      router.replace(`/${returnStore}?checkout=1`);
+      router.refresh();
       return;
     }
     const { data: accountAccess, error: accessError } = await supabase.rpc("platform_account_access");
@@ -144,8 +151,8 @@ function LoginForm({ initialMode, plan, callbackError, accessError, invitationNe
             ))}
           </div>
           <div className="store-auth-heading" key={mode}>
-            <h1 id="store-auth-title">{mode === "signin" ? "Chào mừng bạn trở lại" : "Tạo tài khoản chủ cửa hàng"}</h1>
-            <p className="store-auth-intro">{mode === "signin" ? "Đăng nhập để vào khu vực quản lý cửa hàng." : plan ? `Tạo tài khoản để đăng ký ${plan.name.toLocaleLowerCase("vi-VN")}.` : "Tạo tài khoản để thiết lập gian hàng."}</p>
+            <h1 id="store-auth-title">{mode === "signin" ? "Chào mừng bạn trở lại" : returnStore ? "Tạo tài khoản mua hàng" : "Tạo tài khoản chủ cửa hàng"}</h1>
+            <p className="store-auth-intro">{returnStore ? "Đăng nhập hoặc đăng ký để tiếp tục đặt hàng." : mode === "signin" ? "Đăng nhập để vào khu vực quản lý cửa hàng." : plan ? `Tạo tài khoản để đăng ký ${plan.name.toLocaleLowerCase("vi-VN")}.` : "Tạo tài khoản để thiết lập gian hàng."}</p>
           </div>
           {mode === "signup" && signupEnabled === false && <p className="store-auth-message" role="status">Đăng ký tài khoản mới đang tạm dừng.</p>}
 

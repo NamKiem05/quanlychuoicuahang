@@ -2,15 +2,24 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
+  const store = request.nextUrl.searchParams.get("store") ?? "";
+  const returnStore = store.length <= 80 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(store) ? store : null;
+  const verificationFailure = new URL("/login", request.url);
+  verificationFailure.searchParams.set("message", "verification-failed");
+  if (returnStore) verificationFailure.searchParams.set("store", returnStore);
   const code = request.nextUrl.searchParams.get("code");
   if (!code) {
-    return NextResponse.redirect(new URL("/login?message=verification-failed", request.url));
+    return NextResponse.redirect(verificationFailure);
   }
 
   const supabase = await createClient();
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
-    return NextResponse.redirect(new URL("/login?message=verification-failed", request.url));
+    return NextResponse.redirect(verificationFailure);
+  }
+
+  if (returnStore) {
+    return NextResponse.redirect(new URL(`/${returnStore}?checkout=1`, request.url));
   }
 
   const { data: access, error: accessError } = await supabase.rpc("platform_account_access");

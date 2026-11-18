@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import BankTransferQr, { type BankTransferDetails } from "@/app/bank-transfer-qr";
@@ -138,6 +139,7 @@ function StoreClosedNotice({ paused, nextOpening, onDismiss }: {
 
 export default function StorefrontClient({ store, categories, products, reviews, initialTimestamp, merchandiseMode = "general" }: StorefrontData) {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
   const [timestamp, setTimestamp] = useState(initialTimestamp);
   useEffect(() => {
     if (!store.orderHours) return;
@@ -159,6 +161,27 @@ export default function StorefrontClient({ store, categories, products, reviews,
   const menuHeadingRef = useRef<HTMLHeadingElement>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [retailCartView, setRetailCartView] = useState(false);
+  const [retailCheckoutError, setRetailCheckoutError] = useState("");
+  const retailCheckoutPending = useRef(false);
+  useEffect(() => {
+    if (merchandiseMode !== "retail" || new URLSearchParams(window.location.search).get("checkout") !== "1") return;
+    const frame = window.requestAnimationFrame(() => { try {
+      const key = `growdesk-checkout:${store.id}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        const parsed: unknown = JSON.parse(saved);
+        if (Array.isArray(parsed)) setCart(parsed.filter((line): line is CartLine =>
+          line && typeof line.id === "string" && typeof line.productId === "string" &&
+          Array.isArray(line.optionIds) && Number.isInteger(line.quantity) && line.quantity > 0 && line.quantity <= 20));
+        localStorage.removeItem(key);
+      }
+      setRetailCartView(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("checkout");
+      window.history.replaceState(window.history.state, "", url);
+    } catch { /* A disabled or unavailable localStorage leaves the cart empty. */ } });
+    return () => window.cancelAnimationFrame(frame);
+  }, [merchandiseMode, store.id]);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [orderCode, setOrderCode] = useState("");
   const [orderEmail, setOrderEmail] = useState("");
@@ -389,6 +412,41 @@ export default function StorefrontClient({ store, categories, products, reviews,
     openProductPicker(product, trigger);
   }
 
+  async function startRetailCheckout(trigger: HTMLButtonElement, pendingCart = cart) {
+    if (retailCheckoutPending.current) return;
+    retailCheckoutPending.current = true;
+    setRetailCheckoutError("");
+    dialogTriggerRef.current = trigger;
+    let navigating = false;
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      if (error && (error.name === "AuthRetryableFetchError" || (error.status !== undefined && error.status >= 500))) {
+        setRetailCheckoutError("Chưa kiểm tra được phiên đăng nhập. Hãy kiểm tra kết nối và thử lại.");
+        setRetailCartView(true);
+        return;
+      }
+      if (error || !data.user || !data.user.email_confirmed_at || data.user.is_anonymous) {
+        try {
+          localStorage.setItem(`growdesk-checkout:${store.id}`, JSON.stringify(pendingCart));
+        } catch {
+          setRetailCheckoutError("Trình duyệt chưa cho phép lưu giỏ hàng. Hãy bật lưu trữ trang web rồi thử lại.");
+          setRetailCartView(true);
+          return;
+        }
+        navigating = true;
+        router.push(`/login?store=${encodeURIComponent(store.slug)}`);
+        return;
+      }
+      setActivePanel("checkout");
+    } catch {
+      navigating = false;
+      setRetailCheckoutError("Chưa kiểm tra được phiên đăng nhập. Hãy kiểm tra kết nối và thử lại.");
+      setRetailCartView(true);
+    } finally {
+      if (!navigating) retailCheckoutPending.current = false;
+    }
+  }
+
   function changeOptionSelection(group: StorefrontProductOptionGroup, optionId: string, isChecked: boolean) {
     setOptionSelections((current) => {
       const selected = current[group.id] ?? [];
@@ -582,7 +640,9 @@ export default function StorefrontClient({ store, categories, products, reviews,
 
       if (error || !data?.public_code) {
         const errorDetail = error?.message.toLowerCase() ?? "";
-        setOrderError(errorDetail.includes("outside order hours")
+        setOrderError(errorDetail.includes("retail_customer_login_required")
+          ? "Phiên đăng nhập đã hết hạn hoặc email chưa được xác minh. Hãy quay lại giỏ hàng và đăng nhập lại."
+          : errorDetail.includes("outside order hours")
           ? "Quán vừa hết giờ nhận đơn. Bạn vẫn có thể xem thực đơn và đặt lại khi quán mở."
           : errorDetail.includes("promotion")
           ? "Mã khuyến mãi vừa hết hạn, hết lượt hoặc không còn đủ điều kiện. Hãy kiểm tra lại mã rồi đặt đơn."
@@ -666,6 +726,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
         <StoreClosedNotice paused={!store.accepts_orders} nextOpening={hoursStatus.nextOpening} onDismiss={() => setClosedNoticeDismissed(true)} />
       )}
       {isRetail ? <RetailStorefront store={store} categories={categories} products={visibleProducts} allProducts={products} reviews={reviews} activeCategory={activeCategory} search={search} cartCount={cartCount} acceptsOrders={acceptsOrders} covers={covers} onCategory={(category) => { setActiveCategory(category); setSearch(""); setShowFullMenu(true); document.getElementById("retail-products")?.scrollIntoView({ behavior: "smooth" }); }} onSearch={setSearch} onSearchSubmit={() => { setShowFullMenu(true); document.getElementById("retail-products")?.scrollIntoView({ behavior: "smooth" }); }} onShowAll={() => resetMenu(true)} onCart={openCart} onAdd={addToCart} onConfirm={(id, optionIds, quantity, buyNow, trigger, variantId) => {
+        if (buyNow && retailCheckoutPending.current) return "Đang kiểm tra phiên đăng nhập.";
         const product = products.find((item) => item.id === id);
         if (!product || !acceptsOrders) return "Cửa hàng chưa thể nhận đơn.";
         if (optionIds.length > 40 || product.optionGroups.some((group) => { const count = group.options.filter((option) => optionIds.includes(option.id)).length; return count < group.min_selections || count > group.max_selections; })) return "Hãy kiểm tra các lựa chọn sản phẩm.";
@@ -675,9 +736,17 @@ export default function StorefrontClient({ store, categories, products, reviews,
         if (product.variants?.length && !variant) return "Hãy chọn biến thể sản phẩm.";
         if (quantity < 1 || total + quantity > 20 || (variant ? variantTotal + quantity > variant.stock : total + quantity > (product.stock_quantity ?? 20))) return "Số lượng vượt quá hàng còn lại hoặc giới hạn giỏ hàng.";
         addConfiguredProduct(product, optionIds, quantity, false, variantId);
-        if (buyNow) { dialogTriggerRef.current = trigger; setActivePanel("checkout"); } else setRetailCartView(true);
+        if (buyNow) {
+          const sortedOptions = [...optionIds].sort();
+          const lineId = `${product.id}:${variantId ?? ""}:${sortedOptions.join(",")}`;
+          const existing = cart.find((line) => line.id === lineId);
+          const pendingCart = existing
+            ? cart.map((line) => line.id === lineId ? { ...line, quantity: line.quantity + quantity } : line)
+            : [...cart, { id: lineId, productId: product.id, optionIds: sortedOptions, variantId, quantity }];
+          void startRetailCheckout(trigger, pendingCart);
+        } else setRetailCartView(true);
         return null;
-      }} cartView={retailCartView} onExitCart={() => setRetailCartView(false)} renderCart={(openDetail) => <RetailCart lines={cartLines} cartCount={cartCount} subtotal={cartTotal} discount={promotionDiscount} appliedCode={promotionForCart?.code ?? null} promotionInput={promotionCodeInput} promotionFeedback={promotionFeedback} promotionStale={Boolean(appliedPromotion && !promotionForCart)} applying={isApplyingPromotion} acceptsOrders={acceptsOrders} recommendations={products.filter((product) => !cart.some((line) => line.productId === product.id))} onChange={changeQuantity} onPromotionInput={(value) => { setPromotionCodeInput(value); setAppliedPromotion(null); setPromotionFeedback(null); }} onApply={() => { void applyPromotion(); }} onClear={() => { setAppliedPromotion(null); setPromotionCodeInput(""); setPromotionFeedback(null); }} onContinue={() => { setRetailCartView(false); resetMenu(true); }} onCheckout={(trigger) => { dialogTriggerRef.current = trigger; setActivePanel("checkout"); }} onDetail={openDetail} />} cartQuantity={(id) => cart.filter((line) => line.productId === id).reduce((sum, line) => sum + line.quantity, 0)} /> : <>
+      }} cartView={retailCartView} onExitCart={() => setRetailCartView(false)} renderCart={(openDetail) => <RetailCart lines={cartLines} cartCount={cartCount} subtotal={cartTotal} discount={promotionDiscount} appliedCode={promotionForCart?.code ?? null} promotionInput={promotionCodeInput} promotionFeedback={promotionFeedback} promotionStale={Boolean(appliedPromotion && !promotionForCart)} applying={isApplyingPromotion} acceptsOrders={acceptsOrders} checkoutError={retailCheckoutError} recommendations={products.filter((product) => !cart.some((line) => line.productId === product.id))} onChange={changeQuantity} onPromotionInput={(value) => { setPromotionCodeInput(value); setAppliedPromotion(null); setPromotionFeedback(null); }} onApply={() => { void applyPromotion(); }} onClear={() => { setAppliedPromotion(null); setPromotionCodeInput(""); setPromotionFeedback(null); }} onContinue={() => { setRetailCartView(false); resetMenu(true); }} onCheckout={(trigger) => { void startRetailCheckout(trigger); }} onDetail={openDetail} />} cartQuantity={(id) => cart.filter((line) => line.productId === id).reduce((sum, line) => sum + line.quantity, 0)} /> : <>
       <header className="site-header">
         <h1 className="storefront-brand-heading">
           <a className="brand" href="#top" onClick={() => resetMenu(false)}>
