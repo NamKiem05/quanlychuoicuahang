@@ -51,7 +51,8 @@ const groups: { label: string; items: MenuItem[] }[] = [
 ];
 const items = groups.flatMap((group) => group.items);
 
-export default function DashboardSidebar({ storeName, storeId, initialPendingOrders, premiumAvailable, platformName, logoUrl }: {
+export default function DashboardSidebar({ storeName, storeId, initialPendingOrders, premiumAvailable, platformName, logoUrl, brandsEnabled }: {
+  brandsEnabled: boolean;
   platformName: string;
   logoUrl: string | null;
   storeName: string | null;
@@ -96,9 +97,9 @@ export default function DashboardSidebar({ storeName, storeId, initialPendingOrd
       void supabase.removeChannel(channel);
     };
   }, [storeId]);
-  const visibleGroups = storeName ? groups : groups.slice(0, 1);
+  const visibleGroups = (storeName ? groups : groups.slice(0, 1)).map((group) => ({ ...group, items: group.items.filter((item) => brandsEnabled || item.href !== "/dashboard/brands") }));
   const mobileMainItems = storeName ? ["/dashboard", "/dashboard/orders", "/dashboard/menu", "/dashboard/promotions"].map((href) => items.find((item) => item.href === href)!) : items.slice(0, 1);
-  const mobileSettingsItems = storeName ? items.filter((item) => !mobileMainItems.includes(item)) : [];
+  const mobileSettingsItems = storeName ? items.filter((item) => !mobileMainItems.includes(item) && (brandsEnabled || item.href !== "/dashboard/brands")) : [];
   const settingsIsActive = mobileSettingsItems.some((item) => item.href && !item.href.includes("#") && (pathname === item.href || pathname.startsWith(`${item.href}/`)));
 
   function isActive(href: string) {

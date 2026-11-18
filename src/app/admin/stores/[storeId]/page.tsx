@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePlatformAdminAccess } from "@/lib/platform-account";
 import { findMerchantPlan } from "@/lib/merchant-plans";
 import Toast from "@/app/toast";
+import { setStoreModule, resetStoreModule } from "../module-actions";
 import "./store-detail.css";
 
 export const metadata = { title: "Chi tiết cửa hàng | Quản trị" };
@@ -26,6 +27,8 @@ export default async function AdminStoreDetail({ params, searchParams }: { param
   const store = storeResult.data;
   if (!store) notFound();
 
+  const [modules, moduleSettings] = await Promise.all([supabase.from("platform_modules").select("code,name,description,default_enabled").order("name"), supabase.from("store_module_settings").select("module_code,enabled").eq("store_id", store.id)]);
+  const moduleStates = await Promise.all((modules.data ?? []).map(async (module) => ({ code: module.code, result: await supabase.rpc("store_module_enabled", { target_store: store.id, target_module: module.code }) })));
   const [domains, members, staff, products, orders, revenue] = await Promise.all([
     supabase.from("store_domains").select("id, hostname, verification_status").eq("store_id", store.id).order("created_at"),
     supabase.from("store_members").select("user_id, role, created_at").eq("store_id", store.id).eq("role", "owner").order("created_at"),
@@ -60,7 +63,7 @@ export default async function AdminStoreDetail({ params, searchParams }: { param
     { label: "Email liên hệ", value: emailUnavailable ? "Không tải được email tài khoản chủ sở hữu" : email || "Chưa cập nhật email" },
   ];
   return <main className="admin-content store-detail">
-    <Toast message={query.message === "updated" ? "Đã cập nhật thông tin cửa hàng." : undefined} />
+    <Toast message={query.message === "updated" ? "Đã cập nhật thông tin cửa hàng." : query.message === "module-updated" ? "Đã cập nhật module cửa hàng." : query.message === "module-failed" ? "Chưa cập nhật được module." : undefined} />
     <Link className="store-detail-back" href="/admin/stores">← Danh sách cửa hàng</Link>
     <header className="store-detail-hero">
       <div className="store-detail-avatar" aria-hidden="true">{store.name.trim().charAt(0).toLocaleUpperCase("vi-VN")}</div>
@@ -74,6 +77,7 @@ export default async function AdminStoreDetail({ params, searchParams }: { param
       <article><span>Doanh thu bán hàng</span><strong>{revenue.error || revenue.data === null ? "—" : money.format(Number(revenue.data))}</strong><small>{revenue.error ? "Chưa tải được doanh thu" : "Đơn đã thanh toán, không tính đơn hủy / từ chối"}</small></article>
     </section>
     {revenue.error && <p className="admin-error" role="alert">Chưa tải được doanh thu. Kiểm tra migration 202611180003_admin_store_revenue.sql và quyền truy cập.</p>}
+    <section className="store-detail-card store-module-panel"><div className="store-detail-card-heading"><div><h2>Module cửa hàng</h2><p>Bật hoặc tắt chức năng cho cửa hàng này.</p></div><span aria-hidden="true">▦</span></div>{modules.error || moduleSettings.error || moduleStates.some((state) => state.result.error) ? <p role="alert">Chưa tải được module. Cần chạy migration 202611180036_store_modules.sql.</p> : modules.data?.map((module) => { const explicit = moduleSettings.data?.find((row) => row.module_code === module.code); const enabled = moduleStates.find((state) => state.code === module.code)?.result.data === true; return <div className="store-module-row" key={module.code}><div><b>{module.name}</b><p>{module.description}</p></div><span>{enabled ? "Đang bật" : "Đã tắt"} · {explicit ? "Riêng cửa hàng" : "Theo ngành hàng"}</span><form action={setStoreModule}><input type="hidden" name="store_id" value={store.id} /><input type="hidden" name="module" value={module.code} /><input type="hidden" name="enabled" value={String(!enabled)} /><button type="submit">{enabled ? "Tắt module" : "Bật module"}</button></form>{explicit && <form action={resetStoreModule}><input type="hidden" name="store_id" value={store.id} /><input type="hidden" name="module" value={module.code} /><button type="submit">Theo ngành hàng</button></form>}</div>; })}</section>
     <div className="store-detail-grid">
       <section className="store-detail-card"><div className="store-detail-card-heading"><div><h2>Thông tin cửa hàng</h2><p>Thông tin đăng ký và liên hệ</p></div><span aria-hidden="true">⌂</span></div>
         <dl className="store-detail-fields">{fields.map((field) => <div key={field.label}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>

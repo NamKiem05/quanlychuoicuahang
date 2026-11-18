@@ -12,6 +12,8 @@ type Product = { id: string; name: string; brand_id: string | null; status: stri
 export default async function BrandsPage({ searchParams }: { searchParams: Promise<{ message?: string }> }) {
   const [{ supabase, store, membership }, query] = await Promise.all([getMerchantContext(), searchParams]);
   if (!store) redirect("/dashboard");
+  const moduleStatus = await supabase.rpc("store_module_enabled", { target_store: store.id, target_module: "brands" });
+  if (moduleStatus.error || moduleStatus.data !== true) return <main className="admin-content"><h1>Quản lý thương hiệu</h1><p role="alert">{moduleStatus.error ? "Chưa kiểm tra được module. Vui lòng liên hệ quản trị viên." : "Chức năng thương hiệu đang tắt cho cửa hàng này."}</p></main>;
   const brandsResult = await supabase.from("store_brands").select("id, name, description, logo_url").eq("store_id", store.id).order("name");
   const products: Product[] = [];
   let productError = false;

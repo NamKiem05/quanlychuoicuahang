@@ -37,3 +37,5 @@
 .business-pagination { display: flex; justify-content: flex-end; gap: 18px; padding: 16px 20px; border-top: 1px solid #edf1f6; color: #71849d; font-size: 11px; }
 .business-pagination a { color: #246ccc; }
 .business-create { margin-top: 20px; padding: 22px; }
+
+.category-module-form { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:10px 0; color:#405977; font-size:12px; }.category-module-form span { flex:1; }.category-module-form button { padding:7px 12px; border:1px solid #d8e5f5; border-radius:8px; background:#f5f9ff; color:#246ac8; cursor:pointer; font-weight:700; }

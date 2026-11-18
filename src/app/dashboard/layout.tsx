@@ -14,6 +14,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const { supabase, store, email, membership } = await getMerchantContext();
   const { settings } = await getPlatformSettings();
   const branding = settings ?? defaultPlatformSettings;
+  const brandsModule = store ? await supabase.rpc("store_module_enabled", { target_store: store.id, target_module: "brands" }) : { data: false, error: null };
   const [{ count: pendingOrderCount }, premiumAvailable] = store
     ? await Promise.all([
       supabase.from("orders").select("id", { count: "exact", head: true }).eq("store_id", store.id).eq("status", "pending"),
@@ -24,7 +25,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   return (
     <div className="admin-app-shell admin-platform-shell merchant-dashboard-shell">
       {store && <ActiveStoreFormGuard key={store.id} storeId={store.id} />}
-      <DashboardSidebar platformName={branding.platform_name} logoUrl={branding.logo_url} key={store?.id} storeName={store?.name ?? null} storeId={store?.id ?? null} initialPendingOrders={pendingOrderCount} premiumAvailable={premiumAvailable} />
+      <DashboardSidebar brandsEnabled={!brandsModule.error && brandsModule.data === true} platformName={branding.platform_name} logoUrl={branding.logo_url} key={store?.id} storeName={store?.name ?? null} storeId={store?.id ?? null} initialPendingOrders={pendingOrderCount} premiumAvailable={premiumAvailable} />
       <div className="admin-workspace">
         <header className="admin-topbar merchant-topbar">
           <form className="admin-topbar-search merchant-topbar-search" action="/dashboard/orders" role="search">
