@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { cacheLife } from "next/cache";
 import { createClient } from "@supabase/supabase-js";
 import { defaultPlatformSettings } from "@/lib/platform-settings";
@@ -27,7 +28,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="vi" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col"><Suspense fallback={<main role="status" style={{ padding: "2rem" }}>Đang tải…</main>}>{children}</Suspense></body>
     </html>
   );
 }
