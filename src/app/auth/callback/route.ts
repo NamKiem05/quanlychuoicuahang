@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
   const verificationFailure = new URL("/login", request.url);
   verificationFailure.searchParams.set("message", "verification-failed");
   if (returnStore) verificationFailure.searchParams.set("store", returnStore);
+  else if (request.nextUrl.searchParams.get("next") === "customer-orders") verificationFailure.searchParams.set("next", "customer-orders");
   const code = request.nextUrl.searchParams.get("code");
   if (!code) {
     return NextResponse.redirect(verificationFailure);
@@ -20,6 +21,9 @@ export async function GET(request: NextRequest) {
 
   if (returnStore) {
     return NextResponse.redirect(new URL(`/${returnStore}?checkout=1`, request.url));
+  }
+  if (request.nextUrl.searchParams.get("next") === "customer-orders") {
+    return NextResponse.redirect(new URL("/customer/orders", request.url));
   }
 
   const { data: access, error: accessError } = await supabase.rpc("platform_account_access");
