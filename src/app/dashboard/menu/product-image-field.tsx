@@ -30,11 +30,15 @@ export default function ProductImageField({
   storeId,
   initialUrl,
   onUploadingChange,
+  kind = "product",
 }: {
   storeId: string;
   initialUrl: string;
   onUploadingChange: (uploading: boolean) => void;
+  kind?: "product" | "category" | "brand";
 }) {
+  const imageLabel = kind === "brand" ? "Logo thương hiệu" : kind === "category" ? "Ảnh danh mục" : "Ảnh món ăn";
+  const saveLabel = kind === "brand" ? "lưu thương hiệu" : kind === "category" ? "thêm danh mục" : "lưu món";
   const fileInput = useRef<HTMLInputElement>(null);
   const [imageUrl, setImageUrl] = useState(initialUrl);
   const [previewUrl, setPreviewUrl] = useState(initialUrl);
@@ -75,7 +79,8 @@ export default function ProductImageField({
 
     try {
       const supabase = createClient();
-      const objectPath = storeId + "/" + crypto.randomUUID() + "." + extension;
+      const prefix = kind === "brand" ? "brand-" : kind === "category" ? "category-" : "";
+      const objectPath = `${storeId}/${prefix}${crypto.randomUUID()}.${extension}`;
       const { error: uploadError } = await supabase.storage.from(bucketName).upload(objectPath, file, {
         cacheControl: "3600",
         contentType: file.type,
@@ -96,7 +101,7 @@ export default function ProductImageField({
         cleanupFailed = Boolean(error);
       }
 
-      setMessage(cleanupFailed ? "Ảnh mới đã tải lên; ảnh vừa chọn trước đó chưa được dọn khỏi kho." : "Đã tải ảnh lên. Nhớ lưu món để áp dụng ảnh mới.");
+      setMessage(cleanupFailed ? "Ảnh mới đã tải lên; ảnh vừa chọn trước đó chưa được dọn khỏi kho." : `Đã tải ảnh lên. Bấm ${saveLabel} để áp dụng.`);
       setMessageIsError(cleanupFailed);
       if (fileInput.current) fileInput.current.value = "";
     } catch {
@@ -129,7 +134,7 @@ export default function ProductImageField({
         setMessageIsError(true);
       }
     } else {
-      setMessage("Ảnh sẽ được gỡ khỏi món sau khi bạn lưu thay đổi.");
+      setMessage("Ảnh sẽ được gỡ sau khi bạn lưu thay đổi.");
       setMessageIsError(false);
     }
   }
@@ -137,8 +142,8 @@ export default function ProductImageField({
   return (
     <div className="product-image-field">
       <input type="hidden" name="image_url" value={imageUrl} readOnly />
-      <div className="product-image-preview" aria-label="Ảnh xem trước món ăn">
-        {previewUrl ? <Image src={previewUrl} alt="Ảnh món ăn" width={180} height={120} unoptimized /> : <span>Ảnh món ăn</span>}
+      <div className="product-image-preview">
+        {previewUrl ? <Image src={previewUrl} alt={imageLabel} width={180} height={120} unoptimized /> : <span>{imageLabel}</span>}
       </div>
       <div className="product-image-controls">
         <label className="secondary-submit product-image-select">
@@ -146,6 +151,7 @@ export default function ProductImageField({
           <input
             ref={fileInput}
             type="file"
+            aria-label={imageLabel}
             accept="image/jpeg,image/png,image/webp"
             disabled={isUploading}
             onChange={(event) => {

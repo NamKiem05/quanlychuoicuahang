@@ -1,0 +1,11 @@
+.merchant-order-hours { margin: 16px 0; scroll-margin-top: 80px; }
+.merchant-hours-day { display: grid; grid-template-columns: minmax(0, 1fr) repeat(2, minmax(0, 130px)); align-items: end; gap: 8px; min-width: 0; margin: 0; padding: 6px 0 10px; border: 0; border-bottom: 1px solid #e6edf5; }
+.merchant-hours-day legend { padding: 0; color: #22314a; font-size: 13px; font-weight: 700; }
+.merchant-hours-day label { display: grid; gap: 3px; color: #52637b; font-size: 12px; }
+.merchant-order-hours .dashboard-form label.merchant-hours-checkbox { display: flex; min-height: 38px; flex-direction: row; align-items: center; gap: 6px; font-size: 12px; }
+.merchant-order-hours .dashboard-form label.merchant-hours-checkbox input { width: 16px; height: 16px; flex: none; margin: 0; padding: 0; accent-color: #175fce; }
+
+@media (max-width: 480px) {
+  .merchant-hours-day { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .merchant-hours-day .merchant-hours-checkbox { grid-column: 1 / -1; }
+}

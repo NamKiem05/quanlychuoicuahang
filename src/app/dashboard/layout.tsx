@@ -1,17 +1,30 @@
 import type { ReactNode } from "react";
-import { signOut } from "./actions";
+import { defaultPlatformSettings, getPlatformSettings } from "@/lib/platform-settings";
+import DashboardAccountMenu from "./account-menu";
 import DashboardSidebar from "./dashboard-sidebar";
 import OrderNotificationBell from "./order-notification-bell";
 import { getMerchantContext } from "./data";
 import StoreAdminChat from "@/app/chat/store-admin-chat";
+import { hasMerchantPremium } from "@/lib/merchant-billing";
+import PlatformNoticeLink from "./platform-notice-link";
+import "@/app/platform-notifications.css";
+import ActiveStoreFormGuard from "./active-store-form-guard";
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
-  const { store } = await getMerchantContext();
-  const storeInitial = store?.name.trim().charAt(0).toLocaleUpperCase("vi-VN") || "C";
+  const { supabase, store, email, membership } = await getMerchantContext();
+  const { settings } = await getPlatformSettings();
+  const branding = settings ?? defaultPlatformSettings;
+  const [{ count: pendingOrderCount }, premiumAvailable] = store
+    ? await Promise.all([
+      supabase.from("orders").select("id", { count: "exact", head: true }).eq("store_id", store.id).eq("status", "pending"),
+      hasMerchantPremium(supabase, store.id),
+    ])
+    : [{ count: null }, false];
 
   return (
     <div className="admin-app-shell admin-platform-shell merchant-dashboard-shell">
-      <DashboardSidebar storeName={store?.name ?? null} />
+      {store && <ActiveStoreFormGuard key={store.id} storeId={store.id} />}
+      <DashboardSidebar platformName={branding.platform_name} logoUrl={branding.logo_url} key={store?.id} storeName={store?.name ?? null} storeId={store?.id ?? null} initialPendingOrders={pendingOrderCount} premiumAvailable={premiumAvailable} />
       <div className="admin-workspace">
         <header className="admin-topbar merchant-topbar">
           <form className="admin-topbar-search merchant-topbar-search" action="/dashboard/orders" role="search">
@@ -21,11 +34,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           </form>
           <div className="merchant-topbar-actions">
             {store && <OrderNotificationBell storeId={store.id} storeName={store.name} />}
-            <div className="admin-topbar-profile merchant-topbar-profile">
-              <span className="admin-topbar-avatar merchant-profile-avatar" aria-hidden="true">{storeInitial}</span>
-              <span className="merchant-profile-copy"><b>{store?.name ?? "Chủ cửa hàng"}</b><small>Quản lý cửa hàng</small></span>
-            </div>
-            <form action={signOut}><button className="merchant-signout-button" type="submit">Đăng xuất <span aria-hidden="true">↗</span></button></form>
+            {store && <PlatformNoticeLink storeId={store.id} />}
+            <DashboardAccountMenu storeName={store?.name ?? null} email={email} role={membership?.role ?? null} />
           </div>
         </header>
         <div className="admin-page-content">{children}</div>

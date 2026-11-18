@@ -1,0 +1,36 @@
+.platform-notices { max-width: 1250px; }
+.platform-notice-heading { display: flex; align-items: center; gap: 15px; }
+.platform-notice-heading > span { display: grid; flex: none; width: 48px; height: 48px; place-items: center; border-radius: 14px; background: #e8f1ff; color: #246dd0; font-size: 24px; }
+.platform-notice-heading p,.platform-notice-card-heading p { margin: 5px 0 0; color: #899aad; font-size: 12px; }
+.platform-notice-note { margin: 20px 0; padding: 15px 18px; border: 1px solid #dfeaf8; border-radius: 11px; background: #f1f7ff; color: #617c9b; font-size: 12px; }
+.platform-notice-note p { margin: 5px 0 0; line-height: 1.6; }
+.platform-notice-success { padding: 12px; border-radius: 9px; background: #e9f8ef; color: #197e4b; font-size: 12px; }
+.platform-notice-card { margin-top: 18px; padding: 22px; border: 1px solid #e0e8f3; border-radius: 14px; background: #fff; }
+.platform-notice-card-heading h2 { margin: 0; color: #263b59; font-size: 16px; }
+.platform-notice-form { display: grid; gap: 14px; margin-top: 18px; }
+.platform-notice-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.platform-notice-form label { display: grid; gap: 6px; color: #536a85; font-size: 11px; font-weight: 700; }
+.platform-notice-form input,.platform-notice-form textarea,.platform-notice-form select { width: 100%; min-width: 0; padding: 10px; border: 1px solid #dce5f0; border-radius: 8px; background: #fff; color: #263b57; font: inherit; }
+.platform-notice-form > p { margin: 0; color: #94a2b2; font-size: 11px; line-height: 1.5; }
+.platform-notice-primary { width: fit-content; padding: 11px 15px; border: 0; border-radius: 9px; background: #236bd0; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; }
+.platform-notice-list { margin-top: 15px; }
+.platform-notice-item { padding: 16px 0; border-top: 1px solid #edf1f6; }
+.platform-notice-item.is-unread { padding: 16px; border: 1px solid #dceaff; border-radius: 10px; background: #f6faff; margin-bottom: 10px; }
+.platform-notice-item-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.platform-notice-item-header h3 { margin: 8px 0 0; color: #253b59; font-size: 14px; overflow-wrap: anywhere; }
+.platform-notice-item-header time { flex: none; color: #9aa8b8; font-size: 10px; }
+.platform-notice-kind,.platform-notice-new { display: inline-block; padding: 5px 8px; border-radius: 6px; background: #edf4ff; color: #3970b5; font-size: 10px; font-weight: 700; }
+.platform-notice-kind.is-maintenance { background: #fff5e5; color: #a97222; }
+.platform-notice-kind.is-payment,.platform-notice-kind.is-expiry { background: #fff0ed; color: #bc5b49; }
+.platform-notice-kind.is-feature { background: #e9f8ef; color: #208354; }
+.platform-notice-new { margin-left: 7px; background: #dcecff; color: #2169c9; }
+.platform-notice-item > p { color: #60738a; font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.platform-notice-item > small { color: #99a6b5; font-size: 10px; }
+.platform-notice-empty { padding: 25px; color: #97a5b6; text-align: center; font-size: 12px; }
+.platform-notice-read { padding: 7px 10px; border: 1px solid #cfe0f4; border-radius: 7px; background: #fff; color: #2869bd; font-size: 11px; cursor: pointer; }
+.platform-notice-pagination { display: flex; justify-content: flex-end; gap: 18px; padding: 16px 0 0; color: #71849d; font-size: 11px; }
+.platform-notice-pagination a { color: #246ccc; }
+.platform-notice-toplink { position: relative; display: flex; align-items: center; gap: 5px; padding: 8px; border: 1px solid #e1e9f3; border-radius: 9px; background: #fff; color: #546e90; font-size: 10px; }
+.platform-notice-toplink > span:first-child { font-size: 17px; }
+.platform-notice-toplink b { display: grid; min-width: 19px; height: 19px; place-items: center; padding: 0 4px; border-radius: 20px; background: #dc354e; color: #fff; font-size: 9px; }
+@media (max-width: 600px) { .platform-notice-grid { grid-template-columns: 1fr; } .platform-notice-item-header { flex-direction: column; } .platform-notice-card { padding: 17px; } .platform-notice-toplink > span:nth-child(2) { display: none; } }

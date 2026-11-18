@@ -1,0 +1,23 @@
+.merchant-sidebar-orders-link { position: relative; }
+.merchant-dashboard-shell .merchant-sidebar-locked { position: relative; opacity: .64; cursor: not-allowed; }
+.merchant-dashboard-shell .merchant-sidebar-locked:hover { background: transparent; }
+.merchant-sidebar-lock { display: inline-flex; flex: none; margin-left: auto; }
+.merchant-sidebar-lock > svg { width: 14px; height: 14px; }
+.merchant-sidebar-order-badge { display: inline-grid; width: 23px; height: 23px; flex: none; place-items: center; margin-left: auto; border: 1px solid #71839d; border-radius: 50%; background: #2c405e; color: #fff; font-size: 10px; font-weight: 800; line-height: 1; }
+.merchant-sidebar-order-badge[data-has-orders="true"] { border: 2px solid #fff; background: #d7203c; box-shadow: 0 0 0 1px #d7203c; }
+@media (min-width: 761px) {
+  .merchant-dashboard-shell > .admin-sidebar .dashboard-sidebar-nav { min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #60718a transparent; }
+  .merchant-dashboard-shell .sidebar-desktop-links { flex-direction: column; gap: 12px; }
+  .merchant-sidebar-group + .merchant-sidebar-group { border-top: 1px solid #ffffff1c; padding-top: 12px; }
+  .merchant-sidebar-group h2 { margin: 0; padding: 3px 10px 7px; color: #91a2ba; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .merchant-dashboard-shell .merchant-sidebar-group .admin-sidebar-link { min-height: 36px; padding: 8px 10px; }
+}
+.merchant-dashboard-shell .merchant-sidebar-unavailable { opacity: .55; cursor: default; }
+.merchant-dashboard-shell .merchant-sidebar-unavailable:hover { background: transparent; }
+.merchant-sidebar-unavailable small { margin-left: auto; font-size: 8px; white-space: nowrap; }
+@media (max-width: 760px) {
+  .merchant-dashboard-shell .sidebar-mobile-settings-menu { max-height: min(70vh, 550px); overflow-y: auto; }
+  .sidebar-mobile-main .merchant-sidebar-lock { position: absolute; top: 3px; left: calc(50% + 8px); margin: 0; }
+  .sidebar-mobile-main .merchant-sidebar-lock > svg { width: 11px; height: 11px; }
+  .merchant-sidebar-order-badge { position: absolute; top: 2px; left: calc(50% + 7px); width: 18px; height: 18px; margin: 0; font-size: 9px; }
+}

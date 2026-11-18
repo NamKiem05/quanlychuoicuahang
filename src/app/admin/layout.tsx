@@ -1,10 +1,14 @@
 import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import AdminSidebar from "./admin-sidebar";
+import AdminNavigation from "./admin-navigation";
 import AdminChatNotificationsProvider from "./admin-chat-notifications";
+import { signOut } from "@/app/dashboard/actions";
+import "./admin-navigation.css";
+import { defaultPlatformSettings, getPlatformSettings } from "@/lib/platform-settings";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
@@ -20,43 +24,50 @@ async function AdminRequestLayout({ children }: { children: ReactNode }) {
   const { data: authData } = await supabase.auth.getClaims();
   if (!authData?.claims?.sub) redirect("/login");
 
+  const { settings } = await getPlatformSettings();
+  const branding = settings ?? defaultPlatformSettings;
   const { data: isAdmin } = await supabase.rpc("is_platform_admin");
-  if (!isAdmin) {
+  const support = isAdmin ? null : await supabase.rpc("has_support_ticket_permission");
+  const supportOnly = !isAdmin && support?.data === true && !support.error;
+  if (!isAdmin && !supportOnly) {
+    const { data: access } = await supabase.rpc("platform_account_access");
+    const inactive = access === "admin_inactive";
     return (
       <main className="dashboard-page">
         <header className="dashboard-header">
-          <Link className="brand" href="/"><span className="brand-mark">M</span><span className="brand-name">bếp nhà mơ<span>.</span></span></Link>
-          <Link className="signout-button" href="/dashboard">Khu vực cửa hàng</Link>
+          <Link className="brand" href="/" aria-label={`${branding.platform_name} - trang giới thiệu`}>{branding.logo_url && <Image src={branding.logo_url} width={180} height={72} alt="" unoptimized style={{ objectFit: "contain" }} />}</Link>
+          <Link className="signout-button" href={inactive ? "/" : "/dashboard"}>{inactive ? "Trang chủ" : "Khu vực cửa hàng"}</Link>
+          <form action={signOut}><button className="signout-button" type="submit">Đăng xuất</button></form>
         </header>
         <section className="admin-locked">
           <span>⌑</span>
           <h1>Khu vực dành cho quản trị viên</h1>
-          <p>Tài khoản của bạn chưa có quyền quản trị nền tảng. Cấp quyền admin qua Supabase SQL Editor rồi tải lại trang này.</p>
-          <Link className="primary-button" href="/dashboard">Quay lại khu vực cửa hàng <span>→</span></Link>
+          <p>{inactive ? "Tài khoản admin này chưa có quyền truy cập. Hãy liên hệ quản trị viên nền tảng." : "Khu vực này dành cho tài khoản quản trị riêng."}</p>
+          <Link className="primary-button" href={inactive ? "/" : "/dashboard"}>{inactive ? "Về trang chủ" : "Quay lại khu vực cửa hàng"} <span>→</span></Link>
         </section>
       </main>
     );
   }
 
   const { data: stores } = await supabase.from("stores").select("id, name").order("name");
-
   return (
     <AdminChatNotificationsProvider stores={stores ?? []}>
       <div className="admin-app-shell admin-platform-shell">
-        <AdminSidebar />
+        <AdminNavigation supportOnly={supportOnly} platformName={branding.platform_name} logoUrl={branding.logo_url} />
         <div className="admin-workspace">
           <header className="admin-topbar">
-            <form className="admin-topbar-search" action="/admin/orders" method="get">
+            {!supportOnly && <form className="admin-topbar-search" action="/admin/orders" method="get">
               <span aria-hidden="true">⌕</span>
               <input type="search" name="q" placeholder="Tìm mã đơn, khách hàng..." aria-label="Tìm đơn hàng hoặc khách hàng" />
               <kbd>Enter</kbd>
-            </form>
+            </form>}
             <div className="admin-topbar-actions">
               <Link className="admin-topbar-store-link" href="/">Trang giới thiệu ↗</Link>
               <div className="admin-topbar-profile" aria-label="Tài khoản quản trị viên">
                 <span className="admin-topbar-avatar">Q</span>
-                <span><b>Quản trị viên</b><small>Admin nền tảng</small></span>
+                <span><b>{supportOnly ? "Nhân viên hỗ trợ" : "Quản trị viên"}</b><small>{supportOnly ? "Hỗ trợ ticket" : "Admin nền tảng"}</small></span>
               </div>
+              <form action={signOut}><button className="secondary-submit" type="submit">Đăng xuất</button></form>
             </div>
           </header>
           <div className="admin-page-content">{children}</div>

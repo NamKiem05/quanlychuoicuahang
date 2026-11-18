@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEven
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import notificationStyles from "./chat-notifications.module.css";
+import { ChatAttachment, ChatFileUpload } from "./chat-attachment";
 
 type ChatStore = { id: string; name: string };
 type ChatMessage = {
@@ -13,6 +14,8 @@ type ChatMessage = {
   sender_role: "merchant" | "admin";
   body: string;
   created_at: string;
+  attachment_path?: string | null;
+  attachment_name?: string | null;
 };
 const EMPTY_STORES: ChatStore[] = [];
 
@@ -21,7 +24,7 @@ function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]) {
   incoming.forEach((message) => messages.set(message.id, message));
   return [...messages.values()]
     .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
-    .slice(-100);
+    ;
 }
 
 function messageTime(value: string) {
@@ -60,17 +63,27 @@ export default function StoreAdminChat({
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [connection, setConnection] = useState("connecting");
+  const [hasOlder, setHasOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [incomingNotice, setIncomingNotice] = useState<ChatMessage | null>(null);
+  const visibleMessages = messages.filter((message) => message.store_id === selectedStoreId);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const messageEndRef = useRef<HTMLDivElement | null>(null);
   const isOpenRef = useRef(isOpen);
   const ownRoleRef = useRef(mode);
-  isOpenRef.current = isOpen;
-  ownRoleRef.current = mode;
+  const selectedStoreRef = useRef(selectedStoreId);
+  const olderLoadRef = useRef(false);
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+    ownRoleRef.current = mode;
+    selectedStoreRef.current = selectedStoreId;
+  }, [isOpen, mode, selectedStoreId]);
 
   useEffect(() => {
+    // The portal target is only available after mounting in the browser.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPortalTarget(document.body);
   }, []);
 
@@ -83,16 +96,30 @@ export default function StoreAdminChat({
   }, []);
 
   useEffect(() => {
+    if (mode !== "merchant" || !storeId) return;
+    const heartbeat = () => { if (!document.hidden) void supabase.rpc("heartbeat_store_chat", { target_store: storeId }); };
+    heartbeat();
+    const interval = window.setInterval(heartbeat, 30000);
+    document.addEventListener("visibilitychange", heartbeat);
+    return () => { window.clearInterval(interval); document.removeEventListener("visibilitychange", heartbeat); };
+  }, [mode, storeId, supabase]);
+
+  useEffect(() => {
+    // Reconcile the selected store with updated server-provided options.
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (mode === "merchant") {
       setSelectedStoreId(storeId ?? "");
       return;
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
     if (!stores.some((store) => store.id === selectedStoreId)) {
       setSelectedStoreId(stores[0]?.id ?? "");
     }
   }, [mode, selectedStoreId, storeId, stores]);
 
   useEffect(() => {
+    // Clear the previous conversation while loading the selected one.
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (!selectedStoreId || !isOpen) {
       if (!selectedStoreId) {
         setMessages([]);
@@ -105,17 +132,20 @@ export default function StoreAdminChat({
     let disposed = false;
     setMessages([]);
     setIsLoading(true);
+    setHasOlder(false);
     setErrorMessage("");
+    /* eslint-enable react-hooks/set-state-in-effect */
     void (async () => {
       const { data, error } = await supabase
         .from("store_admin_messages")
-        .select("id, store_id, sender_id, sender_role, body, created_at")
+        .select("*")
         .eq("store_id", selectedStoreId)
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })
         .limit(100);
       if (disposed) return;
       if (error) setErrorMessage("Chưa tải được tin nhắn. Hãy kiểm tra migration 021 và quyền truy cập.");
+      setHasOlder((data?.length ?? 0) === 100);
       setMessages((current) => mergeMessages(current, ((data ?? []) as ChatMessage[]).reverse()));
       setIsLoading(false);
     })();
@@ -126,12 +156,15 @@ export default function StoreAdminChat({
   }, [isOpen, selectedStoreId, supabase]);
 
   useEffect(() => {
+    // Reflect the lifecycle of the realtime subscription in the UI.
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (!selectedStoreId) {
       setConnection("idle");
       return;
     }
     let disposed = false;
     setConnection("connecting");
+    /* eslint-enable react-hooks/set-state-in-effect */
     const channel = supabase
       .channel(`store-admin-chat:${selectedStoreId}`)
       .on("postgres_changes", {
@@ -175,12 +208,28 @@ export default function StoreAdminChat({
     if (!incomingNotice) return;
     const timeoutId = window.setTimeout(() => setIncomingNotice(null), 7000);
     return () => window.clearTimeout(timeoutId);
-  }, [incomingNotice?.id]);
+  }, [incomingNotice]);
 
   useEffect(() => {
     if (!isOpen) return;
+    if (olderLoadRef.current) { olderLoadRef.current = false; return; }
     messageEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [isOpen, messages, selectedStoreId]);
+
+  async function loadOlder() {
+    const first = visibleMessages[0];
+    const currentStore = selectedStoreId;
+    if (!first || loadingOlder) return;
+    setLoadingOlder(true);
+    const result = await supabase.from("store_admin_messages").select("*").eq("store_id", currentStore)
+      .or(`created_at.lt.${first.created_at},and(created_at.eq.${first.created_at},id.lt.${first.id})`)
+      .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(100);
+    if (selectedStoreRef.current === currentStore) {
+      if (result.error) setErrorMessage("Chưa tải được tin nhắn cũ.");
+      else { olderLoadRef.current = true; setHasOlder((result.data?.length ?? 0) === 100); setMessages((current) => mergeMessages(current, (result.data ?? []) as ChatMessage[])); }
+    }
+    setLoadingOlder(false);
+  }
 
   if (!storeOptions.length || !portalTarget) return null;
 
@@ -300,17 +349,18 @@ export default function StoreAdminChat({
         </label>}
 
         <div className="store-admin-chat-thread" ref={messageListRef} aria-live="polite" aria-relevant="additions text">
+          {hasOlder && visibleMessages.length > 0 && <button className="chat-load-older" type="button" disabled={loadingOlder} onClick={() => void loadOlder()}>{loadingOlder ? "Đang tải…" : "Xem tin nhắn trước"}</button>}
           {isLoading && <p className="store-admin-chat-state">Đang tải tin nhắn…</p>}
-          {!isLoading && messages.length === 0 && <div className="store-admin-chat-empty">
+          {!isLoading && visibleMessages.length === 0 && <div className="store-admin-chat-empty">
             <span aria-hidden="true">✦</span>
             <b>{mode === "admin" ? `Bắt đầu trao đổi với ${activeStore.name}` : "Cần hỗ trợ từ admin?"}</b>
             <p>Gửi tin nhắn tại đây để trao đổi trực tiếp về hoạt động cửa hàng.</p>
           </div>}
-          {messages.map((message) => {
+          {visibleMessages.map((message) => {
             const ownMessage = message.sender_role === ownRole;
             return <article className={`store-admin-chat-message${ownMessage ? " is-own" : ""}`} key={message.id}>
               {!ownMessage && <small>{message.sender_role === "admin" ? "Quản trị viên" : activeStore.name}</small>}
-              <p>{message.body}</p>
+              {message.attachment_path && message.attachment_name ? <ChatAttachment path={message.attachment_path} name={message.attachment_name} /> : <p>{message.body}</p>}
               <time dateTime={message.created_at}>{messageTime(message.created_at)}</time>
             </article>;
           })}
@@ -318,6 +368,7 @@ export default function StoreAdminChat({
         </div>
 
         {errorMessage && <p className="store-admin-chat-error" role="alert">{errorMessage}</p>}
+        <ChatFileUpload key={selectedStoreId} storeId={selectedStoreId} onSent={(sent) => { if (selectedStoreRef.current === sent.store_id) setMessages((current) => mergeMessages(current, [sent])); }} />
         <form className="store-admin-chat-compose" onSubmit={sendMessage}>
           <textarea
             value={draft}

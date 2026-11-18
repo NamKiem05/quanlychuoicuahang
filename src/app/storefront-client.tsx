@@ -5,9 +5,16 @@ import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import BankTransferQr, { type BankTransferDetails } from "@/app/bank-transfer-qr";
-import type { StoreThemePreset, StorefrontLayoutPreset, StorefrontSection } from "@/lib/store-appearance";
+import SidebarIcon from "@/app/sidebar-icon";
+import { getStoreBannerUrls, type StoreThemePreset, type StorefrontLayoutPreset, type StorefrontSection, type StorefrontStyle } from "@/lib/store-appearance";
+import StoreBannerSlideshow from "@/app/store-banner-slideshow";
+import { getOrderHoursStatus, type OrderHours } from "@/lib/store-order-hours";
+import "./storefront-closed-notice.css";
+import "./storefront-styles.css";
+import "./storefront-home.css";
+import "./storefront-product-picker.css";
 
-export type StorefrontCategory = { id: string; name: string };
+export type StorefrontCategory = { id: string; name: string; image: string | null };
 
 export type StorefrontProductOption = {
   id: string;
@@ -56,11 +63,14 @@ export type StorefrontData = {
     address: string | null;
     logo_url: string | null;
     banner_url: string | null;
+    banner_urls?: string[];
     theme_preset: StoreThemePreset;
+    storefront_style: StorefrontStyle;
     storefront_layout: StorefrontLayoutPreset;
     storefront_section_order: StorefrontSection[];
     storefront_hidden_sections: StorefrontSection[];
     accepts_orders: boolean;
+    orderHours: OrderHours | null;
     delivery_enabled: boolean;
     delivery_radius_m: number;
     delivery_fee_vnd: number;
@@ -74,6 +84,7 @@ export type StorefrontData = {
   categories: StorefrontCategory[];
   products: StorefrontProduct[];
   reviews: StorefrontReview[];
+  initialTimestamp: number;
 };
 
 const formatPrice = (price: number) => `${price.toLocaleString("vi-VN")}₫`;
@@ -94,12 +105,53 @@ type OrderDelivery = {
 };
 type AppliedPromotion = { code: string; discountVnd: number; subtotalVnd: number };
 
-export default function StorefrontClient({ store, categories, products, reviews }: StorefrontData) {
+function StoreClosedNotice({ paused, nextOpening, onDismiss }: {
+  paused: boolean;
+  nextOpening: string | null;
+  onDismiss: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (ref.current && !ref.current.open) ref.current.showModal();
+  }, []);
+
+  return (
+    <dialog ref={ref} className="storefront-closed-notice" aria-labelledby="storefront-closed-title" aria-describedby="storefront-closed-message" onClose={onDismiss}>
+      <form method="dialog">
+        <button className="storefront-closed-dismiss" type="submit" aria-label="Đóng thông báo">×</button>
+        <div className="storefront-closed-icon" aria-hidden="true"><span /></div>
+        <h2 id="storefront-closed-title">Cửa hàng đang đóng</h2>
+        <p id="storefront-closed-message">{paused ? "Quán đang tạm ngưng nhận đơn." : "Quán đã ngoài giờ nhận đơn."} Bạn vẫn có thể xem thực đơn.</p>
+        {!paused && nextOpening && (
+          <p className="storefront-closed-hours"><span>Mở lại lúc</span><strong>{nextOpening}</strong></p>
+        )}
+        <button className="storefront-closed-menu" type="submit">Xem thực đơn <span aria-hidden="true">→</span></button>
+      </form>
+    </dialog>
+  );
+}
+
+export default function StorefrontClient({ store, categories, products, reviews, initialTimestamp }: StorefrontData) {
   const supabase = useMemo(() => createClient(), []);
+  const [timestamp, setTimestamp] = useState(initialTimestamp);
+  useEffect(() => {
+    if (!store.orderHours) return;
+    const timer = window.setInterval(() => setTimestamp(Date.now()), 10_000);
+    return () => window.clearInterval(timer);
+  }, [store.orderHours]);
+  const hoursStatus = getOrderHoursStatus(store.orderHours, Math.max(timestamp, initialTimestamp));
+  const acceptsOrders = store.accepts_orders && hoursStatus.open;
+  const closedMessage = !store.accepts_orders ? "Cửa hàng tạm ngưng nhận đơn"
+    : hoursStatus.nextOpening ? `Quán mở lại lúc ${hoursStatus.nextOpening}` : "Quán đang ngoài giờ nhận đơn";
+  const [closedNoticeDismissed, setClosedNoticeDismissed] = useState(false);
+  const closedOnEntry = !store.accepts_orders || !getOrderHoursStatus(store.orderHours, initialTimestamp).open;
   const contentOrder = (section: StorefrontSection) => 2 + store.storefront_section_order.indexOf(section);
   const isSectionVisible = (section: StorefrontSection) => !store.storefront_hidden_sections.includes(section);
-  const [activeCategory, setActiveCategory] = useState("Tất cả");
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [showFullMenu, setShowFullMenu] = useState(false);
+  const [showAllReviews, setShowAllReviews] = useState(false);
+  const menuHeadingRef = useRef<HTMLHeadingElement>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [orderCode, setOrderCode] = useState("");
@@ -115,6 +167,39 @@ export default function StorefrontClient({ store, categories, products, reviews 
   const [isApplyingPromotion, setIsApplyingPromotion] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"cash_on_pickup" | "bank_transfer">("cash_on_pickup");
   const [orderPayment, setOrderPayment] = useState<OrderPayment | null>(null);
+  const [qrPaymentStatus, setQrPaymentStatus] = useState<"waiting" | "paid" | "closed">("waiting");
+
+  useEffect(() => {
+    if (activePanel !== "success" || orderPayment?.method !== "bank_transfer" ||
+        !orderPayment.details || !orderCode || !orderPhone || qrPaymentStatus !== "waiting") return;
+    let disposed = false;
+    let checking = false;
+    async function checkPayment() {
+      if (disposed || checking || document.hidden) return;
+      checking = true;
+      try {
+        const { data, error } = await supabase.rpc("track_guest_order", {
+          requested_public_code: orderCode,
+          requested_customer_phone: orderPhone,
+        });
+        if (disposed || error || !data) return;
+        if (data.status === "cancelled" || data.status === "rejected") setQrPaymentStatus("closed");
+        else if (data.payment_status === "paid") setQrPaymentStatus("paid");
+      } catch {
+        // A temporary lookup failure will be retried on the next interval.
+      } finally {
+        checking = false;
+      }
+    }
+    void checkPayment();
+    const timer = window.setInterval(() => void checkPayment(), 5000);
+    document.addEventListener("visibilitychange", checkPayment);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", checkPayment);
+    };
+  }, [activePanel, orderCode, orderPhone, orderPayment, qrPaymentStatus, supabase]);
   const [fulfillmentMethod, setFulfillmentMethod] = useState<"pickup" | "delivery">("pickup");
   const [deliveryLocation, setDeliveryLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [deliveryLocationMessage, setDeliveryLocationMessage] = useState("");
@@ -163,13 +248,19 @@ export default function StorefrontClient({ store, categories, products, reviews 
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [activePanel]);
-  const categoryNames = [
-    "Tất cả",
-    ...new Set([
-      ...categories.map((category) => category.name),
-      ...products.map((product) => product.category),
-    ]),
-  ];
+  const categoryNames = [...new Set([
+    ...categories.map((category) => category.name),
+    ...products.map((product) => product.category),
+  ])];
+  const categoryImages = new Map<string, string>();
+  for (const category of categories) {
+    if (category.image) categoryImages.set(category.name, category.image);
+  }
+  for (const product of products) {
+    if (product.image && !categoryImages.has(product.category)) {
+      categoryImages.set(product.category, product.image);
+    }
+  }
 
   const cartLines = cart.flatMap((line) => {
     const product = products.find((item) => item.id === line.productId);
@@ -187,6 +278,9 @@ export default function StorefrontClient({ store, categories, products, reviews 
   const customizingProduct = products.find((product) => product.id === customizingProductId) ?? null;
   const customizingProductQuantity = customizingProduct
     ? cart.filter((line) => line.productId === customizingProduct.id).reduce((sum, line) => sum + line.quantity, 0)
+    : 0;
+  const availablePickerQuantity = customizingProduct
+    ? Math.max(0, Math.min(20, customizingProduct.stock_quantity ?? 20) - customizingProductQuantity)
     : 0;
   const customizingUnitPrice = customizingProduct
     ? customizingProduct.price + customizingProduct.optionGroups.reduce((total, group) => total + group.options
@@ -207,7 +301,7 @@ export default function StorefrontClient({ store, categories, products, reviews 
     () =>
       products.filter((product) => {
         const matchesCategory =
-          activeCategory === "Tất cả" || product.category === activeCategory;
+          activeCategory === null || product.category === activeCategory;
         const matchesSearch = product.name
           .toLocaleLowerCase("vi-VN")
           .includes(search.trim().toLocaleLowerCase("vi-VN"));
@@ -225,6 +319,8 @@ export default function StorefrontClient({ store, categories, products, reviews 
     }
     return grouped;
   }, [reviews]);
+  const featuredMenu = !showFullMenu && activeCategory === null && !search.trim() && products.length > 0;
+  const displayedProducts = featuredMenu ? visibleProducts.slice(0, 4) : visibleProducts;
 
   function openProductPicker(product: StorefrontProduct, trigger?: HTMLElement) {
     if (trigger) dialogTriggerRef.current = trigger;
@@ -251,8 +347,8 @@ export default function StorefrontClient({ store, categories, products, reviews 
     const currentProductQuantity = cart
       .filter((line) => line.productId === product.id)
       .reduce((sum, line) => sum + line.quantity, 0);
-    if (quantity < 1 || quantity > 20 || (product.stock_quantity !== null && currentProductQuantity + quantity > product.stock_quantity)) {
-      setOptionError("Giỏ hàng đã đạt số lượng tồn kho còn lại của món này.");
+    if (quantity < 1 || currentProductQuantity + quantity > Math.min(20, product.stock_quantity ?? 20)) {
+      setOptionError("Số lượng chọn vượt quá mức có thể thêm vào giỏ.");
       return;
     }
 
@@ -310,11 +406,7 @@ export default function StorefrontClient({ store, categories, products, reviews 
   }
 
   function changePickerQuantity(change: number) {
-    if (!customizingProduct) return;
-    const available = customizingProduct.stock_quantity === null
-      ? 20
-      : Math.max(0, Math.min(20, customizingProduct.stock_quantity - customizingProductQuantity));
-    setCustomizingQuantity((quantity) => Math.max(1, Math.min(available, quantity + change)));
+    setCustomizingQuantity((quantity) => Math.max(1, Math.min(availablePickerQuantity, quantity + change)));
     setOptionError("");
   }
 
@@ -429,6 +521,10 @@ export default function StorefrontClient({ store, categories, products, reviews 
 
   async function placeOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!acceptsOrders) {
+      setOrderError(closedMessage);
+      return;
+    }
     setOrderError("");
     setEmailNotificationStatus(null);
     setIsSubmittingOrder(true);
@@ -468,7 +564,9 @@ export default function StorefrontClient({ store, categories, products, reviews 
 
       if (error || !data?.public_code) {
         const errorDetail = error?.message.toLowerCase() ?? "";
-        setOrderError(errorDetail.includes("promotion")
+        setOrderError(errorDetail.includes("outside order hours")
+          ? "Quán vừa hết giờ nhận đơn. Bạn vẫn có thể xem thực đơn và đặt lại khi quán mở."
+          : errorDetail.includes("promotion")
           ? "Mã khuyến mãi vừa hết hạn, hết lượt hoặc không còn đủ điều kiện. Hãy kiểm tra lại mã rồi đặt đơn."
           : errorDetail.includes("out of stock")
             ? "Một món vừa hết hàng hoặc không còn đủ số lượng. Hãy cập nhật giỏ hàng rồi thử lại."
@@ -494,6 +592,7 @@ export default function StorefrontClient({ store, categories, products, reviews 
       setPromotionFeedback(null);
       setPaymentMethod("cash_on_pickup");
       const isBankTransfer = data.payment_method === "bank_transfer";
+      setQrPaymentStatus("waiting");
       setOrderPayment({
         method: isBankTransfer ? "bank_transfer" : "cash_on_pickup",
         amount: Number(data.total_vnd),
@@ -522,94 +621,109 @@ export default function StorefrontClient({ store, categories, products, reviews 
     }
   }
 
-  return (
-    <main className="storefront-page" id="top" data-theme={store.theme_preset} data-layout={store.storefront_layout}>
-      <div className={"announcement" + (store.accepts_orders ? "" : " announcement-paused")} style={{ order: 0 }}>
-        <span className="announcement-dot" aria-hidden="true" />
-        {store.accepts_orders ? "Cửa hàng đang nhận đơn" : "Cửa hàng tạm ngưng nhận đơn"}
-        <span className="announcement-right">Hiển thị trong bán kính 5 km</span>
-      </div>
+  function openCart(trigger: HTMLButtonElement) {
+    dialogTriggerRef.current = trigger;
+    setActivePanel("cart");
+  }
 
-      <header className="site-header" style={{ order: 1 }}>
-        <a className="brand" href="#top" aria-label={`${store.name} - trang chủ`}>
-          {store.logo_url
-            ? <Image className="brand-logo-image" src={store.logo_url} alt={`Logo ${store.name}`} width={44} height={44} unoptimized />
-            : <span className="brand-mark">{store.name.trim().charAt(0).toUpperCase()}</span>}
-          <span className="brand-name">{store.name}<span>.</span></span>
-        </a>
+  function resetMenu(fullMenu: boolean) {
+    setActiveCategory(null);
+    setSearch("");
+    setShowFullMenu(fullMenu);
+  }
+
+  function submitMenuSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setShowFullMenu(true);
+    menuHeadingRef.current?.focus({ preventScroll: true });
+    menuHeadingRef.current?.scrollIntoView({ block: "start" });
+  }
+
+  const covers = getStoreBannerUrls(store.banner_urls, store.banner_url);
+  return (
+    <main className="storefront-page storefront-home" id="top" data-theme={store.theme_preset} data-layout={store.storefront_layout} data-style={store.storefront_style}>
+      {closedOnEntry && !acceptsOrders && !closedNoticeDismissed && (
+        <StoreClosedNotice paused={!store.accepts_orders} nextOpening={hoursStatus.nextOpening} onDismiss={() => setClosedNoticeDismissed(true)} />
+      )}
+      <header className="site-header">
+        <h1 className="storefront-brand-heading">
+          <a className="brand" href="#top" onClick={() => resetMenu(false)}>
+            {store.logo_url
+              ? <Image className="brand-logo-image" src={store.logo_url} alt="" width={44} height={44} unoptimized />
+              : <span className="brand-mark" aria-hidden="true">{store.name.trim().charAt(0).toUpperCase()}</span>}
+            <span className="brand-name">{store.name}</span>
+          </a>
+        </h1>
         <nav className="main-nav" aria-label="Điều hướng chính">
-          <a className="nav-active" href="#menu">Thực đơn</a>
-          <Link href="/track-order">Tra cứu đơn</Link>
-          {isSectionVisible("story") && <a href="#story">Về cửa hàng</a>}
+          <a className={showFullMenu ? undefined : "nav-active"} href="#top" onClick={() => resetMenu(false)}>Trang chủ</a>
+          <a className={showFullMenu ? "nav-active" : undefined} href="#menu" onClick={() => resetMenu(true)}>Thực đơn</a>
+          <a href="#promotions">Khuyến mãi</a>
+          {isSectionVisible("reviews") && <a href="#reviews">Đánh giá</a>}
           <a href="#footer">Liên hệ</a>
         </nav>
-        <button className="cart-button" type="button" onClick={(event) => { dialogTriggerRef.current = event.currentTarget; setActivePanel("cart"); }} aria-label={`Giỏ hàng, ${cartCount} món`}>
-          <span aria-hidden="true">▣</span>
-          <span className="cart-label">Giỏ hàng</span>
-          <span className="cart-count">{cartCount}</span>
+        <form className="search-box" aria-label="Tìm trong thực đơn" role="search" onSubmit={submitMenuSearch}>
+          <button type="submit" aria-label="Xem kết quả tìm món"><SidebarIcon name="search" /></button>
+          <input type="search" placeholder="Tìm món ăn…" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Tìm món ăn" />
+        </form>
+        <button className="cart-button" type="button" onClick={(event) => openCart(event.currentTarget)} aria-label={`Giỏ hàng, ${cartCount} món`}>
+          <SidebarIcon name="cart" />
+          {cartCount > 0 && <span className="cart-count" aria-hidden="true">{cartCount}</span>}
         </button>
       </header>
+      {!acceptsOrders && <div className="announcement announcement-paused" style={{ order: 1 }}>
+        <span className="announcement-dot" aria-hidden="true" />
+        {closedMessage}
+      </div>}
 
-      {isSectionVisible("hero") && <section className="hero" style={{ order: contentOrder("hero") }}>
-        <div className="hero-copy">
-          <div className="eyebrow"><span>✳</span> MÓN NGON NHÀ LÀM</div>
-          <h1>Ngon như cơm nhà,<br /><em>ấm lòng mỗi bữa.</em></h1>
-          <p>{store.description || "Món ngon được chuẩn bị tươi mỗi ngày, đặt trực tiếp từ cửa hàng."}</p>
-          <div className="hero-actions">
-            <a className="primary-button" href="#menu">Khám phá thực đơn <span>↘</span></a>
-            <span className="hero-note">Thực đơn cập nhật trực tiếp từ cửa hàng</span>
-          </div>
-          <div className="hero-details">
-            <div><span className="detail-icon">⌂</span><span><b>{store.address || "Cửa hàng địa phương"}</b><small>Hiển thị trong 5 km</small></span></div>
-            <div><span className="detail-icon">♡</span><span><b>Nấu trong ngày</b><small>Tươi ngon mỗi bữa</small></span></div>
-          </div>
+      {isSectionVisible("hero") && (
+        <div className="storefront-banner" style={{ order: contentOrder("hero") }}>
+          {covers.length ? (
+            <StoreBannerSlideshow key={covers.join("|")} urls={covers} storeName={store.name} href="#menu" onOpenMenu={() => resetMenu(true)} />
+          ) : (
+            <div className="storefront-banner-fallback">
+              <div><h2>{store.name}</h2>{store.description && <p>{store.description}</p>}</div>
+              <a className="primary-button" href="#menu" onClick={() => resetMenu(true)}>Xem thực đơn <span aria-hidden="true">→</span></a>
+            </div>
+          )}
         </div>
-        <div className="hero-image" role="img" aria-label={`Cửa hàng ${store.name}`} style={store.banner_url ? { backgroundImage: `linear-gradient(0deg,#18241622,#18241600 40%), url("${store.banner_url}")` } : undefined}>
-          <div className="image-caption"><span className="caption-spark">✳</span><span><b>{store.name}</b><small>Món ngon từ cửa hàng</small></span></div>
-          <div className="hero-stamp"><span>NHÀ LÀM</span><b>♡</b><span>TỪ 2021</span></div>
-        </div>
-        <span className="hero-scribble" aria-hidden="true">mời bạn ăn nhé!</span>
-      </section>}
+      )}
 
       <section className="menu-section" id="menu" style={{ order: contentOrder("menu") }}>
+        {categoryNames.length > 0 && (
+          <div className="category-list" role="group" aria-label="Lọc theo danh mục">
+            {[null, ...categoryNames].map((category) => {
+              const image = category === null ? undefined : categoryImages.get(category);
+              return (
+                <button
+                  className={`category-chip${activeCategory === category ? " selected" : ""}`}
+                  key={category === null ? "all" : `category-${category}`}
+                  onClick={() => { setActiveCategory(category); setShowFullMenu(true); }}
+                  aria-pressed={activeCategory === category}
+                  type="button"
+                >
+                  <span className="storefront-category-picture">
+                    {image ? (
+                      <Image src={image} alt="" fill sizes="96px" unoptimized />
+                    ) : (
+                      <SidebarIcon name={category === null ? "overview" : "menu"} />
+                    )}
+                  </span>
+                  <span>{category ?? "Tất cả món"}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         <div className="section-heading">
-          <div>
-            <div className="eyebrow"><span>✳</span> BẾP MƠ HÔM NAY</div>
-            <h2>Món ngon chờ bạn</h2>
-          </div>
-          <label className="search-box">
-            <span aria-hidden="true">⌕</span>
-            <input
-              type="search"
-              placeholder="Tìm món bạn thích..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              aria-label="Tìm món ăn"
-            />
-            <kbd>⌘ K</kbd>
-          </label>
+          <h2 ref={menuHeadingRef} tabIndex={-1}>{featuredMenu ? "Món ăn nổi bật" : activeCategory ?? "Thực đơn"}</h2>
+          {featuredMenu && visibleProducts.length > 4 && (
+            <button className="storefront-section-link" type="button" onClick={() => { setShowFullMenu(true); menuHeadingRef.current?.focus(); }}>Xem tất cả <span aria-hidden="true">→</span></button>
+          )}
         </div>
 
-        <div className="menu-toolbar">
-          <div className="category-list" aria-label="Lọc theo danh mục">
-            {categoryNames.map((category) => (
-              <button
-                className={`category-chip${activeCategory === category ? " selected" : ""}`}
-                key={category}
-                onClick={() => setActiveCategory(category)}
-                aria-pressed={activeCategory === category}
-                type="button"
-              >
-                {category}
-              </button>
-            ))}
-          </div>
-          <button className="sort-button" type="button">Phổ biến nhất <span>⌄</span></button>
-        </div>
-
-        {visibleProducts.length > 0 ? (
+        {displayedProducts.length > 0 ? (
           <div className="product-grid">
-            {visibleProducts.map((product) => {
+            {displayedProducts.map((product) => {
               const productCartQuantity = cart.filter((line) => line.productId === product.id).reduce((sum, line) => sum + line.quantity, 0);
               const productAtStockLimit = product.stock_quantity !== null && productCartQuantity >= product.stock_quantity;
               const productReviews = reviewsByProduct.get(product.id) ?? [];
@@ -619,20 +733,22 @@ export default function StorefrontClient({ store, categories, products, reviews 
 
               return (
                 <article className="product-card" key={product.id}>
-                  <div className="product-image" style={{ backgroundImage: `url("${product.image}")` }}>
+                  <div className="product-image">
+                    {product.image ? <Image src={product.image} alt="" fill sizes="(max-width: 640px) 50vw, (max-width: 960px) 33vw, 25vw" unoptimized /> : <SidebarIcon name="menu" />}
                     {product.label && <span className={`product-label${product.label === "Mới" ? " new-label" : ""}`}>{product.label === "Bán chạy" ? "★ " : "✳ "}{product.label}</span>}
                     {product.stock_quantity === 0 && <span className="product-label sold-out-label">Hết hàng</span>}
-                    <button className="favorite-button" type="button" aria-label={`Yêu thích ${product.name}`}>♡</button>
                   </div>
                   <div className="product-info">
-                    <div className="product-category">{product.category}</div>
                     <h3>{product.name}</h3>
-                    <p>{product.description}</p>
-                    {productReviews.length > 0 && <div className="product-rating"><span>★</span> {average.toFixed(1)} <small>({productReviews.length} đánh giá)</small></div>}
+                    {product.description && <p>{product.description}</p>}
                     <div className="product-bottom">
-                      <div><strong>{product.optionGroups.length > 0 ? `Từ ${formatPrice(product.price)}` : formatPrice(product.price)}</strong>{product.stock_quantity !== null && product.stock_quantity > 0 && <small className="product-stock">Còn {product.stock_quantity} món</small>}{product.optionGroups.length > 0 && <small className="product-stock">Có tùy chọn</small>}</div>
-                      <button className={`add-button${addedProduct === product.id ? " added" : ""}`} onClick={(event) => addToCart(product.id, event.currentTarget)} type="button" disabled={!store.accepts_orders || product.stock_quantity === 0 || productAtStockLimit} aria-label={product.stock_quantity === 0 ? `${product.name} đã hết hàng` : productAtStockLimit ? `Đã đạt số lượng tồn kho của ${product.name}` : !store.accepts_orders ? "Cửa hàng tạm ngưng nhận đơn" : `Chọn món ${product.name}`}>
-                        {!store.accepts_orders || product.stock_quantity === 0 ? "–" : addedProduct === product.id ? "✓" : "+"}
+                      <div>
+                        <strong>{product.optionGroups.length > 0 ? `Từ ${formatPrice(product.price)}` : formatPrice(product.price)}</strong>
+                        {productReviews.length > 0 && <div className="product-rating"><span aria-hidden="true">★</span> {average.toFixed(1)} <small>({productReviews.length} đánh giá)</small></div>}
+                        {product.stock_quantity !== null && product.stock_quantity > 0 && <small className="product-stock">Còn {product.stock_quantity} món</small>}
+                      </div>
+                      <button className={`add-button${addedProduct === product.id ? " added" : ""}`} onClick={(event) => addToCart(product.id, event.currentTarget)} type="button" disabled={!acceptsOrders || product.stock_quantity === 0 || productAtStockLimit} aria-label={product.stock_quantity === 0 ? `${product.name} đã hết hàng` : productAtStockLimit ? `Đã đạt số lượng tồn kho của ${product.name}` : !acceptsOrders ? "Cửa hàng tạm ngưng nhận đơn" : `Chọn món ${product.name}`}>
+                        {!acceptsOrders || productAtStockLimit ? "–" : addedProduct === product.id ? "✓" : <SidebarIcon name="cart" />}
                       </button>
                     </div>
                   </div>
@@ -641,37 +757,66 @@ export default function StorefrontClient({ store, categories, products, reviews 
             })}
           </div>
         ) : (
-          <div className="empty-state"><span>☻</span><b>Chưa tìm thấy món phù hợp</b><p>Thử tìm tên món khác hoặc chọn danh mục khác nhé.</p></div>
+          <div className="empty-state">
+            <b>{products.length ? "Chưa tìm thấy món phù hợp" : "Quán chưa có món đang bán"}</b>
+            {products.length > 0 && <p>Thử tìm tên món khác hoặc chọn danh mục khác.</p>}
+          </div>
         )}
-        <div className="menu-footer"><span>✳</span> Thực đơn từ {store.name}, cập nhật trực tiếp từ cửa hàng <span>✳</span></div>
       </section>
 
-      {isSectionVisible("reviews") && <section className="reviews-section" id="reviews" style={{ order: contentOrder("reviews") }}>
-        <div className="reviews-heading">
-          <div><div className="eyebrow"><span>✳</span> LỜI NHẮN TỪ KHÁCH</div><h2>Đánh giá món ăn</h2></div>
-          <p>Đánh giá đã được cửa hàng duyệt</p>
-        </div>
-        {reviews.length > 0 ? (
-          <div className="review-grid">
-            {reviews.slice(0, 12).map((review) => (
-              <article className="public-review-card" key={review.id}>
-                <div className="public-review-stars" aria-label={`${review.rating} trên 5 sao`}>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>
-                <b>{review.productName}</b>
-                {review.body && <p>{review.body}</p>}
-                <footer><span>{review.displayName}</span><time dateTime={review.createdAt}>{new Date(review.createdAt).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</time></footer>
-              </article>
-            ))}
+      <div className="storefront-extras" style={{ order: contentOrder("reviews") }}>
+        <section className="storefront-promotions" id="promotions">
+          <SidebarIcon name="promotions" />
+          <div>
+            <h2>Khuyến mãi</h2>
+            <p>Bạn có mã ưu đãi? Nhập mã trong giỏ hàng trước khi đặt món.</p>
+            {cartCount > 0 ? (
+              <button className="storefront-promo-action" type="button" onClick={(event) => openCart(event.currentTarget)}>Mở giỏ hàng <span aria-hidden="true">→</span></button>
+            ) : (
+              <a className="storefront-promo-action" href="#menu" onClick={() => resetMenu(true)}>Chọn món <span aria-hidden="true">→</span></a>
+            )}
           </div>
-        ) : (
-          <div className="reviews-empty">Cửa hàng chưa có đánh giá được công khai.</div>
-        )}
-      </section>}
+        </section>
+        {isSectionVisible("reviews") && <section className="reviews-section" id="reviews">
+          <div className="reviews-heading">
+            <h2>Đánh giá khách hàng</h2>
+            {reviews.length > 1 && <button className="storefront-section-link" type="button" aria-expanded={showAllReviews} aria-controls="storefront-review-list" onClick={() => setShowAllReviews((expanded) => !expanded)}>{showAllReviews ? "Thu gọn" : "Xem thêm"} <span aria-hidden="true">{showAllReviews ? "↑" : "→"}</span></button>}
+          </div>
+          {reviews.length > 0 ? (
+            <div className="review-grid" id="storefront-review-list">
+              {reviews.slice(0, showAllReviews ? 12 : 1).map((review) => {
+                const image = products.find((product) => product.id === review.productId)?.image;
+                return (
+                  <article className="public-review-card" key={review.id}>
+                    <div>
+                      <div className="public-review-stars" aria-label={`${review.rating} trên 5 sao`}>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</div>
+                      <b>{review.productName}</b>
+                      {review.body && <p>{review.body}</p>}
+                      <footer><span>{review.displayName}</span><time dateTime={review.createdAt}>{new Date(review.createdAt).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</time></footer>
+                    </div>
+                    {image && <Image className="storefront-review-image" src={image} width={88} height={88} alt="" unoptimized />}
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="reviews-empty">Cửa hàng chưa có đánh giá được công khai.</div>
+          )}
+        </section>}
+      </div>
 
       {isSectionVisible("story") && <section className="story-strip" id="story" style={{ order: contentOrder("story") }}>
-        <span className="story-mark">M</span>
-        <div><b>Món ngon địa phương, đặt trực tiếp từ cửa hàng.</b><p>{store.description || `Khám phá thực đơn của ${store.name}.`}</p></div>
-        <a href="#menu">Chọn món yêu thích <span>↗</span></a>
+        <span className="story-mark" aria-hidden="true">{store.name.trim().charAt(0).toUpperCase()}</span>
+        <div><h2>Về {store.name}</h2>{store.description && <p>{store.description}</p>}{store.address && <p>{store.address}</p>}</div>
+        <a href="#menu" onClick={() => resetMenu(true)}>Chọn món yêu thích <span aria-hidden="true">↗</span></a>
       </section>}
+
+      <ul className="storefront-services" aria-label="Thông tin đặt hàng" style={{ order: 6 }}>
+        <li><SidebarIcon name={store.delivery_enabled ? "delivery" : "store"} /><div><b>{store.delivery_enabled ? "Giao tận nơi" : "Nhận tại cửa hàng"}</b><span>{store.delivery_enabled ? `Trong bán kính ${formatDistance(store.delivery_radius_m)}` : "Đặt món trước khi đến"}</span></div></li>
+        <li><SidebarIcon name="payment" /><div><b>Thanh toán</b><span>{store.bankTransfer ? "Tiền mặt hoặc chuyển khoản" : "Tiền mặt khi nhận món"}</span></div></li>
+        <li><SidebarIcon name="orders" /><div><b><Link href="/track-order">Tra cứu đơn hàng</Link></b><span>Dùng mã đơn và số điện thoại</span></div></li>
+        {store.phone && <li><SidebarIcon name="support" /><div><b>Liên hệ cửa hàng</b><a href={`tel:${store.phone}`}>{store.phone}</a></div></li>}
+      </ul>
 
       <footer id="footer" style={{ order: 7 }}>
         <a className="brand footer-brand" href="#top">{store.logo_url
@@ -680,10 +825,11 @@ export default function StorefrontClient({ store, categories, products, reviews 
         <span>© 2026 {store.name}</span>
         <Link href="/track-order">Tra cứu đơn hàng</Link>
         <Link className="owner-footer-link" href="/login">Dành cho chủ quán ↗</Link>
-        {store.phone && <span>Hotline <b>{store.phone}</b></span>}
+        {store.address && <span>{store.address}</span>}
+        {store.phone && <a href={`tel:${store.phone}`}>{store.phone}</a>}
       </footer>
 
-      {cartCount > 0 && <button className="mobile-cart" type="button" style={{ order: 8 }} onClick={(event) => { dialogTriggerRef.current = event.currentTarget; setActivePanel("cart"); }}><span>▣ Giỏ hàng</span><b>{cartCount} món</b></button>}
+      {cartCount > 0 && <button className="mobile-cart" type="button" style={{ order: 8 }} onClick={(event) => openCart(event.currentTarget)}><span>Giỏ hàng</span><b>{cartCount} món</b></button>}
 
       {activePanel && (
         <div className="dialog-backdrop" style={{ order: 9 }} onMouseDown={(event) => { if (event.target === event.currentTarget) closeOrderModal(); }}>
@@ -697,112 +843,167 @@ export default function StorefrontClient({ store, categories, products, reviews 
           >
             <div className="dialog-heading">
               <div>
-                <div className="eyebrow"><span>✳</span> {store.name.toLocaleUpperCase("vi-VN")}</div>
+                {activePanel !== "cart" && activePanel !== "customize" && <div className="eyebrow"><span>✳</span> {store.name.toLocaleUpperCase("vi-VN")}</div>}
                 <h2 id="dialog-title">
                   {activePanel === "cart" && "Giỏ hàng của bạn"}
                   {activePanel === "checkout" && "Thông tin đặt món"}
                   {activePanel === "success" && "Đơn hàng đã gửi"}
                   {activePanel === "customize" && (customizingProduct?.optionGroups.length ? "Tùy chỉnh món" : "Thêm món vào giỏ")}
                 </h2>
+                {activePanel === "cart" && <p className="storefront-cart-count">{cartCount} món trong giỏ</p>}
               </div>
               <button ref={dialogCloseRef} className="dialog-close" type="button" onClick={closeOrderModal} aria-label="Đóng">×</button>
             </div>
-
             {activePanel === "customize" && customizingProduct && (
               <form className="product-customize-form" onSubmit={submitProductOptions}>
-                <div className="customize-product-summary">
-                  <b>{customizingProduct.name}</b>
-                  <span>Giá cơ bản {formatPrice(customizingProduct.price)}</span>
-                  {customizingProduct.description && <small>{customizingProduct.description}</small>}
-                </div>
-                {!customizingProduct.optionGroups.length && <p className="product-picker-no-options">Món này không có tùy chọn thêm. Chọn số lượng rồi thêm vào giỏ.</p>}
-                {customizingProduct.optionGroups.map((group) => {
-                  const selected = optionSelections[group.id] ?? [];
-                  const isSingle = group.selection_mode === "single";
-                  return (
-                    <fieldset className="payment-method-options customize-option-group" key={group.id}>
-                      <legend>{group.name} {group.min_selections > 0 ? <span>· Bắt buộc</span> : <span>· Tùy chọn</span>}</legend>
-                      {isSingle && group.min_selections === 0 && (
-                        <label className={selected.length === 0 ? "payment-method-option selected" : "payment-method-option"}>
-                          <input type="radio" name={`option-group-${group.id}`} checked={selected.length === 0} onChange={() => { setOptionSelections((current) => ({ ...current, [group.id]: [] })); setOptionError(""); }} />
-                          <span><b>Không chọn</b><small>Giữ nguyên giá món</small></span>
-                        </label>
-                      )}
-                      {group.options.map((option) => {
-                        const checked = selected.includes(option.id);
-                        const wouldIncreaseSelectionCount = !isSingle || selected.length === 0;
-                        const disabledByLimit = !checked && ((!isSingle && selected.length >= group.max_selections) || (wouldIncreaseSelectionCount && selectedOptionCount >= 40));
-                        return (
-                          <label className={checked ? "payment-method-option selected" : "payment-method-option"} key={option.id}>
-                            <input
-                              type={isSingle ? "radio" : "checkbox"}
-                              name={isSingle ? `option-group-${group.id}` : undefined}
-                              checked={checked}
-                              disabled={disabledByLimit}
-                              onChange={(event) => changeOptionSelection(group, option.id, event.target.checked)}
-                            />
-                            <span><b>{option.name}</b><small>{option.price_adjustment_vnd > 0 ? `+${formatPrice(option.price_adjustment_vnd)}` : "Không cộng thêm"}</small></span>
-                          </label>
-                        );
-                      })}
-                    </fieldset>
-                  );
-                })}
-                <div className="product-picker-quantity">
-                  <span>Số lượng</span>
-                  <div className="quantity-control">
-                    <button type="button" onClick={() => changePickerQuantity(-1)} disabled={customizingQuantity <= 1} aria-label="Giảm số lượng">−</button>
-                    <span>{customizingQuantity}</span>
-                    <button type="button" onClick={() => changePickerQuantity(1)} disabled={customizingQuantity >= 20 || (customizingProduct.stock_quantity !== null && customizingProductQuantity + customizingQuantity >= customizingProduct.stock_quantity)} aria-label="Tăng số lượng">+</button>
+                <div className="customize-product-content">
+                  <div className="customize-product-summary">
+                    {customizingProduct.image && (
+                      <div className="customize-product-photo">
+                        <Image src={customizingProduct.image} alt="" fill sizes="128px" unoptimized />
+                      </div>
+                    )}
+                    <div>
+                      <h3>{customizingProduct.name}</h3>
+                      {customizingProduct.description && <p>{customizingProduct.description}</p>}
+                      <strong>{formatPrice(customizingProduct.price)}</strong>
+                    </div>
                   </div>
+                  {customizingProduct.optionGroups.map((group) => {
+                    const selected = optionSelections[group.id] ?? [];
+                    const isSingle = group.selection_mode === "single";
+                    const selectionHint = group.min_selections === group.max_selections
+                      ? `Chọn ${group.max_selections}`
+                      : group.min_selections > 0
+                        ? `Chọn ${group.min_selections}–${group.max_selections}`
+                        : `Chọn tối đa ${group.max_selections}`;
+                    return (
+                      <fieldset className="payment-method-options customize-option-group" key={group.id}>
+                        <legend>{group.name}<span data-required={group.min_selections > 0}>{selectionHint}</span></legend>
+                        {isSingle && group.min_selections === 0 && (
+                          <label className={selected.length === 0 ? "payment-method-option selected" : "payment-method-option"}>
+                            <input type="radio" name={`option-group-${group.id}`} checked={selected.length === 0} onChange={() => { setOptionSelections((current) => ({ ...current, [group.id]: [] })); setOptionError(""); }} />
+                            <span>Không chọn</span>
+                          </label>
+                        )}
+                        {group.options.map((option) => {
+                          const checked = selected.includes(option.id);
+                          const wouldIncreaseSelectionCount = !isSingle || selected.length === 0;
+                          const disabledByLimit = !checked && ((!isSingle && selected.length >= group.max_selections) || (wouldIncreaseSelectionCount && selectedOptionCount >= 40));
+                          return (
+                            <label className={checked ? "payment-method-option selected" : "payment-method-option"} key={option.id}>
+                              <input
+                                type={isSingle ? "radio" : "checkbox"}
+                                name={isSingle ? `option-group-${group.id}` : undefined}
+                                checked={checked}
+                                disabled={disabledByLimit}
+                                onChange={(event) => changeOptionSelection(group, option.id, event.target.checked)}
+                              />
+                              <span>{option.name}</span>
+                              {option.price_adjustment_vnd > 0 && <strong>+{formatPrice(option.price_adjustment_vnd)}</strong>}
+                            </label>
+                          );
+                        })}
+                      </fieldset>
+                    );
+                  })}
                 </div>
-                {optionError && <p className="order-error" role="alert">{optionError}</p>}
-                <button className="primary-button checkout-button" type="submit" disabled={!store.accepts_orders || customizingProduct.stock_quantity === 0 || (customizingProduct.stock_quantity !== null && customizingProductQuantity >= customizingProduct.stock_quantity)}>
-                  {customizingProduct.stock_quantity !== null && customizingProductQuantity >= customizingProduct.stock_quantity ? "Đã đủ số lượng trong giỏ" : `Thêm ${customizingQuantity} món · ${formatPrice(customizingUnitPrice * customizingQuantity)}`}
-                  <span>→</span>
-                </button>
+                <div className="product-picker-footer">
+                  <div className="product-picker-quantity">
+                    <span>Số lượng</span>
+                    <div className="quantity-control" role="group" aria-label="Số lượng món">
+                      <button type="button" onClick={() => changePickerQuantity(-1)} disabled={customizingQuantity <= 1} aria-label="Giảm số lượng">−</button>
+                      <output>{customizingQuantity}</output>
+                      <button type="button" onClick={() => changePickerQuantity(1)} disabled={customizingQuantity >= availablePickerQuantity} aria-label="Tăng số lượng">+</button>
+                    </div>
+                  </div>
+                  <button className="primary-button product-picker-submit" type="submit" disabled={!acceptsOrders || customizingQuantity > availablePickerQuantity}>
+                    {availablePickerQuantity === 0 ? "Đã đạt số lượng tối đa" : (
+                      <>
+                        <span><SidebarIcon name="cart" />Thêm vào giỏ</span>
+                        <strong>{formatPrice(customizingUnitPrice * customizingQuantity)}</strong>
+                      </>
+                    )}
+                  </button>
+                  {optionError && <p className="order-error" role="alert">{optionError}</p>}
+                </div>
               </form>
             )}
 
             {activePanel === "cart" && (
               <>
                 {cartLines.length > 0 ? (
-                  <div className="cart-lines">
-                    {cartLines.map(({ id, product, quantity, unitPrice, optionLabels }) => {
-                      const productQuantity = cart.filter((line) => line.productId === product.id).reduce((sum, line) => sum + line.quantity, 0);
-                      return (
-                        <article className="cart-line" key={id}>
-                          <div className="cart-thumb" style={{ backgroundImage: `url("${product.image}")` }} />
-                          <div className="cart-line-info">
-                            <b>{product.name}</b>
-                            {optionLabels.map((label) => <small className="cart-option-label" key={label}>{label}</small>)}
-                            <span>{formatPrice(unitPrice)} / món</span>
-                            <div className="quantity-control">
-                              <button type="button" onClick={() => changeQuantity(id, -1)} aria-label={`Giảm ${product.name}`}>−</button>
-                              <span>{quantity}</span>
-                              <button type="button" onClick={() => changeQuantity(id, 1)} disabled={quantity >= 20 || (product.stock_quantity !== null && productQuantity >= product.stock_quantity)} aria-label={`Tăng ${product.name}`}>+</button>
+                  <div className="storefront-cart-layout">
+                    <div className="cart-lines" aria-label="Món trong giỏ">
+                      {cartLines.map(({ id, product, quantity, unitPrice, optionLabels }) => {
+                        const productQuantity = cart.filter((line) => line.productId === product.id).reduce((sum, line) => sum + line.quantity, 0);
+                        return (
+                          <article className="cart-line" key={id}>
+                            <div className="cart-thumb" style={{ backgroundImage: `url("${product.image}")` }} />
+                            <div className="cart-line-info">
+                              <b>{product.name}</b>
+                              {optionLabels.map((label) => <small className="cart-option-label" key={label}>{label}</small>)}
+                              <div className="quantity-control">
+                                <button type="button" onClick={() => changeQuantity(id, -1)} aria-label={`Giảm ${product.name}`}>−</button>
+                                <span>{quantity}</span>
+                                <button type="button" onClick={() => changeQuantity(id, 1)} disabled={quantity >= 20 || (product.stock_quantity !== null && productQuantity >= product.stock_quantity)} aria-label={`Tăng ${product.name}`}>+</button>
+                              </div>
                             </div>
-                          </div>
-                          <strong className="line-total">{formatPrice(unitPrice * quantity)}</strong>
-                        </article>
-                      );
-                    })}
+                            <div className="storefront-cart-line-price">
+                              <strong className="line-total">{formatPrice(unitPrice * quantity)}</strong>
+                              <small>{formatPrice(unitPrice)} / món</small>
+                              <button type="button" onClick={() => changeQuantity(id, -quantity)} aria-label={`Xóa ${product.name} khỏi giỏ`}>Xóa</button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                    <aside className="cart-summary storefront-cart-price" aria-label="Tổng tiền giỏ hàng">
+                      <h3>Tóm tắt đơn hàng</h3>
+                      <div><span>Tạm tính</span><strong>{formatPrice(cartTotal)}</strong></div>
+                      <div className="promotion-discount-row"><span>Giảm giá{promotionForCart ? ` · ${promotionForCart.code}` : ""}</span><strong>{promotionDiscount > 0 ? "−" : ""}{formatPrice(promotionDiscount)}</strong></div>
+                      {store.delivery_enabled && <div><span>Phí giao hàng</span><small>Tính ở bước thanh toán</small></div>}
+                      <section className="promotion-checkout" aria-label="Mã khuyến mãi">
+                        <label htmlFor="promotion-code">Mã khuyến mãi</label>
+                        <div className="promotion-checkout-input-row">
+                          <input
+                            id="promotion-code"
+                            name="promotionCodeInput"
+                            value={promotionCodeInput}
+                            maxLength={24}
+                            autoCapitalize="characters"
+                            autoComplete="off"
+                            placeholder="Nhập mã của cửa hàng"
+                            onChange={(event) => {
+                              setPromotionCodeInput(event.target.value.toUpperCase());
+                              setAppliedPromotion(null);
+                              setPromotionFeedback(null);
+                            }}
+                          />
+                          {promotionForCart ? (
+                            <button type="button" className="promotion-clear-button" onClick={() => { setAppliedPromotion(null); setPromotionCodeInput(""); setPromotionFeedback(null); }}>Bỏ mã</button>
+                          ) : (
+                            <button type="button" className="promotion-apply-button" onClick={() => void applyPromotion()} disabled={isApplyingPromotion || !acceptsOrders}>
+                              {isApplyingPromotion ? "Đang kiểm tra..." : "Áp dụng"}
+                            </button>
+                          )}
+                        </div>
+                        {appliedPromotion && !promotionForCart && <p className="promotion-feedback is-error" role="status">Giỏ hàng đã thay đổi. Hãy áp dụng lại mã.</p>}
+                        {promotionFeedback && !(appliedPromotion && !promotionForCart) && <p className={`promotion-feedback${promotionFeedback.isError ? " is-error" : ""}`} role={promotionFeedback.isError ? "alert" : "status"}>{promotionFeedback.message}</p>}
+                      </section>
+                      <div className="storefront-cart-discounted"><span>Tổng cộng</span><strong>{formatPrice(cartTotal - promotionDiscount)}</strong></div>
+                      <button className="primary-button checkout-button" type="button" disabled={!acceptsOrders || isApplyingPromotion} onClick={() => setActivePanel("checkout")}>Thanh toán</button>
+                    </aside>
                   </div>
                 ) : (
                   <div className="cart-empty"><span>▣</span><b>Giỏ hàng đang trống</b><p>Chọn vài món ngon để {store.name} chuẩn bị nhé.</p><button type="button" onClick={() => { closeOrderModal(); document.querySelector("#menu")?.scrollIntoView({ behavior: "smooth" }); }}>Xem thực đơn</button></div>
-                )}
-                {cartLines.length > 0 && (
-                  <div className="cart-summary">
-                    <div><span>Tạm tính</span><strong>{formatPrice(cartTotal)}</strong></div>
-          <small>Phí giao hàng sẽ hiện ở bước tiếp theo nếu bạn chọn giao tận nơi.</small>
-                    <button className="primary-button checkout-button" type="button" onClick={() => setActivePanel("checkout")}>Tiếp tục đặt món <span>→</span></button>
-                  </div>
                 )}
               </>
             )}
 
             {activePanel === "checkout" && (
               <form className="checkout-form" onSubmit={placeOrder}>
+                <button className="storefront-return-to-cart" type="button" onClick={() => { setOrderError(""); setActivePanel("cart"); }}>← Về giỏ hàng</button>
                 <div className="pickup-note"><span>{fulfillmentMethod === "delivery" ? "⌖" : "⌂"}</span><div><b>{fulfillmentMethod === "delivery" ? "Giao tận nơi" : "Nhận tại cửa hàng"}</b><small>{fulfillmentMethod === "delivery" ? `Cửa hàng giao trong bán kính ${formatDistance(store.delivery_radius_m)}.` : `${store.name} sẽ xác nhận đơn và thời gian nhận món.`}</small></div></div>
                 <label>Họ và tên<input name="customerName" autoComplete="name" placeholder="Tên người nhận" required /></label>
                 <label>Số điện thoại<input name="customerPhone" type="tel" autoComplete="tel" inputMode="tel" pattern="[0-9+() .-]{9,16}" placeholder="Ví dụ: 090 123 4567" required /></label>
@@ -847,40 +1048,12 @@ export default function StorefrontClient({ store, categories, products, reviews 
                     </label>
                   )}
                 </fieldset>
-                <section className="promotion-checkout" aria-label="Mã khuyến mãi">
-                  <label htmlFor="promotion-code">Mã khuyến mãi</label>
-                  <div className="promotion-checkout-input-row">
-                    <input
-                      id="promotion-code"
-                      name="promotionCodeInput"
-                      value={promotionCodeInput}
-                      maxLength={24}
-                      autoCapitalize="characters"
-                      autoComplete="off"
-                      placeholder="Nhập mã của cửa hàng"
-                      onChange={(event) => {
-                        setPromotionCodeInput(event.target.value.toUpperCase());
-                        setAppliedPromotion(null);
-                        setPromotionFeedback(null);
-                      }}
-                    />
-                    {promotionForCart ? (
-                      <button type="button" className="promotion-clear-button" onClick={() => { setAppliedPromotion(null); setPromotionCodeInput(""); setPromotionFeedback(null); }}>Bỏ mã</button>
-                    ) : (
-                      <button type="button" className="promotion-apply-button" onClick={() => void applyPromotion()} disabled={isApplyingPromotion || !store.accepts_orders}>
-                        {isApplyingPromotion ? "Đang kiểm tra..." : "Áp dụng"}
-                      </button>
-                    )}
-                  </div>
-                  {appliedPromotion && !promotionForCart && <p className="promotion-feedback is-error" role="status">Giỏ hàng đã thay đổi. Hãy áp dụng lại mã.</p>}
-                  {promotionFeedback && !(appliedPromotion && !promotionForCart) && <p className={`promotion-feedback${promotionFeedback.isError ? " is-error" : ""}`} role={promotionFeedback.isError ? "alert" : "status"}>{promotionFeedback.message}</p>}
-                </section>
                 {orderError && <p className="order-error" role="alert">{orderError}</p>}
                 <div className="checkout-total"><span>Tạm tính · {cartCount} món</span><strong>{formatPrice(cartTotal)}</strong></div>
                 {fulfillmentMethod === "delivery" && <div className="checkout-total delivery-fee-row"><span>Phí giao hàng</span><strong>{formatPrice(store.delivery_fee_vnd)}</strong></div>}
                 {promotionForCart && <div className="checkout-total promotion-discount-row"><span>Giảm giá · {promotionForCart.code}</span><strong>−{formatPrice(promotionForCart.discountVnd)}</strong></div>}
                 <div className="checkout-total grand-total"><span>Tổng thanh toán</span><strong>{formatPrice(checkoutTotal)}</strong></div>
-                <button className="primary-button checkout-button" type="submit" disabled={!store.accepts_orders || isSubmittingOrder || isApplyingPromotion}>{isSubmittingOrder ? "Đang gửi đơn..." : isApplyingPromotion ? "Đang kiểm tra mã..." : "Đặt món và tạo đơn"}<span>→</span></button>
+                <button className="primary-button checkout-button" type="submit" disabled={!acceptsOrders || isSubmittingOrder || isApplyingPromotion}>{isSubmittingOrder ? "Đang gửi đơn..." : isApplyingPromotion ? "Đang kiểm tra mã..." : "Đặt món và tạo đơn"}<span>→</span></button>
                 <p className="payment-note">{checkoutTotal <= 0 ? "Mã khuyến mãi đã giảm toàn bộ tiền món; bạn không còn khoản cần thanh toán." : `${fulfillmentMethod === "delivery" ? "Cửa hàng tự giao đơn đến địa chỉ của bạn." : "Nhận món tại cửa hàng."} · ${paymentMethod === "bank_transfer" ? "Thanh toán sẽ được tự xác nhận nếu cửa hàng đã kết nối; nếu chưa, cửa hàng sẽ xác nhận thủ công." : fulfillmentMethod === "delivery" ? "Thanh toán tiền mặt khi nhận hàng." : "Thanh toán tiền mặt khi nhận món."}`}</p>
               </form>
             )}
@@ -918,8 +1091,10 @@ export default function StorefrontClient({ store, categories, products, reviews 
                 )}
                 {orderPayment?.method === "bank_transfer" && orderPayment.details && (
                   <>
-                    <span className="payment-pending-badge">Đang chờ cửa hàng xác nhận thanh toán</span>
-                    <BankTransferQr details={orderPayment.details} />
+                    <span className={qrPaymentStatus === "paid" ? "payment-paid-badge" : "payment-pending-badge"} role="status">
+                      {qrPaymentStatus === "paid" ? "Đã xác nhận thanh toán" : qrPaymentStatus === "closed" ? "Đơn đã đóng. Nếu đã chuyển tiền, hãy liên hệ cửa hàng." : "Đang chờ chuyển khoản"}
+                    </span>
+                    {qrPaymentStatus === "waiting" && <BankTransferQr details={orderPayment.details} />}
                   </>
                 )}
                 <Link className="primary-button checkout-button" href="/track-order">Tra cứu đơn hàng <span>→</span></Link>

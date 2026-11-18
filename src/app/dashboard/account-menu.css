@@ -1,0 +1,46 @@
+.dashboard-account { position: relative; }
+.dashboard-account-trigger { display: flex; align-items: center; gap: 9px; padding: 5px 9px 5px 5px; border: 1px solid #dfe7f3; border-radius: 12px; background: #fff; color: #172b46; text-align: left; cursor: pointer; }
+.dashboard-account-trigger:hover, .dashboard-account-trigger[aria-expanded="true"] { border-color: #b5cff2; background: #f1f7ff; }
+.dashboard-account-avatar { display: grid; width: 34px; height: 34px; flex: none; place-items: center; border-radius: 10px; background: #e3edff; color: #175fce; font-size: 14px; font-weight: 750; }
+.dashboard-account-trigger-copy { display: grid; min-width: 0; max-width: 130px; }
+.dashboard-account-trigger-copy b { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-account-trigger-copy small, .dashboard-account-info small { color: #53657d; font-size: 11px; }
+.dashboard-account-chevron { width: 7px; height: 7px; margin: -3px 2px 0 0; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); }
+.dashboard-account-panel { position: absolute; z-index: 2; top: calc(100% + 8px); right: 0; width: min(265px, calc(100vw - 32px)); padding: 6px; border: 1px solid #dfe7f3; border-radius: 13px; background: #fff; box-shadow: 0 12px 32px #153c7226; }
+.dashboard-account-info { display: grid; gap: 4px; padding: 10px; border-bottom: 1px solid #e6edf5; overflow-wrap: anywhere; }
+.dashboard-account-info strong { font-size: 14px; }
+.dashboard-account-info > span { color: #44566e; font-size: 12px; }
+.dashboard-account-panel > a, .dashboard-account-panel button { display: flex; width: 100%; min-height: 40px; align-items: center; justify-content: space-between; padding: 0 10px; border-radius: 7px; color: #175fce; font-size: 13px; text-align: left; cursor: pointer; }
+.dashboard-account-panel button { color: #9a2838; }
+.dashboard-account-panel :is(a, button):hover { background: #f1f6ff; }
+.dashboard-account :is(a, button):focus-visible { outline: 2px solid #216cdb; outline-offset: 2px; }
+.dashboard-account-password { max-width: 510px; }
+.dashboard-account-error { color: #9a2838; font-size: 13px; }
+.dashboard-account-success { color: #14603b; font-size: 13px; }
+.dashboard-account-back { display: inline-block; margin-top: 15px; color: #175fce; font-size: 13px; }
+.dashboard-profile-heading { display: flex; max-width: 780px; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-bottom: 18px; }
+.dashboard-profile-back { color: #175fce; font-size: 13px; }
+.dashboard-profile-card { max-width: 780px; overflow: hidden; border: 1px solid #dfe7f3; border-radius: 16px; background: #fff; box-shadow: 0 8px 24px #153c720d; }
+.dashboard-profile-banner { display: flex; align-items: center; gap: 16px; padding: clamp(18px, 3vw, 30px); background: linear-gradient(125deg, #e7f0ff, #f6f9ff); }
+.dashboard-profile-avatar { display: grid; width: 58px; height: 58px; flex: none; place-items: center; border: 2px solid #fff; border-radius: 16px; background: #175fce; color: #fff; font-size: 23px; font-weight: 750; }
+.dashboard-profile-banner > div { min-width: 0; }
+.dashboard-profile-banner h2 { margin: 0 0 6px; color: #172b46; font-size: clamp(18px, 2.6vw, 25px); font-weight: 750; overflow-wrap: anywhere; }
+.dashboard-profile-role { display: inline-block; padding: 3px 8px; border-radius: 6px; background: #fff; color: #174e9d; font-size: 12px; font-weight: 600; }
+.dashboard-profile-body { padding: clamp(16px, 3vw, 26px); }
+.dashboard-account-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.dashboard-account-details > div { display: grid; align-content: start; gap: 5px; padding: 12px 14px; border: 1px solid #e6edf5; border-radius: 10px; background: #f8fafd; }
+.dashboard-account-details dt { color: #53657d; font-size: 12px; }
+.dashboard-account-details dd { margin: 0; color: #172b46; font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
+.dashboard-profile-password-link { display: inline-flex; align-items: center; gap: 12px; margin-top: 16px; padding: 8px 12px; border: 1px solid #d6e5fa; border-radius: 8px; color: #175fce; font-size: 13px; font-weight: 650; }
+.dashboard-profile-password-link:hover { background: #edf5ff; }
+.dashboard-profile :is(a, button):focus-visible { outline: 2px solid #216cdb; outline-offset: 2px; }
+
+@media (max-width: 480px) {
+  .dashboard-account-details { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  .dashboard-account { margin-left: 8px; }
+  .dashboard-account-trigger { gap: 6px; }
+  .dashboard-account-trigger-copy { display: none; }
+}

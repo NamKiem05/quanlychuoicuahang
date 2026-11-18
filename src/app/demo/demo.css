@@ -1,0 +1,25 @@
+.merchant-demo-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;  font-size: 14px; }
+.merchant-demo-header > a:first-child { color: #175fce; }
+.merchant-demo :is(button, .merchant-demo-primary) { display: inline-flex; min-height: 38px; align-items: center; padding: 6px 12px; border: 1px solid #cbdaf0; border-radius: 8px; background: #fff; color: #1757a9; font-size: 13px; font-weight: 650; cursor: pointer; }
+.merchant-demo .merchant-demo-primary { border-color: #175fce; background: #175fce; color: #fff; }
+.merchant-demo button:hover { border-color: #175fce; }
+.merchant-demo :is(a, button):focus-visible { outline: 2px solid #216cdb; outline-offset: 2px; }
+.merchant-demo-orders { margin-top: 18px; padding: 16px; border: 1px solid #dfe7f3; border-radius: 12px; background: #fff; }
+.merchant-demo :is(#demo-overview, #demo-orders) { scroll-margin-top: 78px; }
+.merchant-demo-orders-heading, .merchant-demo-orders-heading > div, .merchant-demo-orders li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.merchant-demo-orders-heading { justify-content: space-between; }
+.merchant-demo-orders h2 { margin: 0; font-size: 19px; font-weight: 700; }
+.merchant-demo-status { margin: 8px 0 0; color: #174e9d; font-size: 13px; }
+.merchant-demo-status:empty { margin: 0; }
+.merchant-demo-orders ul { margin: 12px 0 0; padding: 0; list-style: none; }
+.merchant-demo-orders li { padding: 12px 0; border-top: 1px solid #e6edf5; }
+.merchant-demo-orders li > div { display: grid; flex: 1 1 220px; gap: 3px; }
+.merchant-demo-badge { padding: 4px 8px; border-radius: 999px; background: #eaf2ff; color: #174e9d; font-size: 12px; font-weight: 650; }
+.merchant-demo-badge[data-status="pending"] { background: #fff1d8; color: #75480c; }
+.merchant-demo-badge[data-status="completed"] { background: #e1f6e9; color: #14603b; }
+.merchant-demo-badge[data-status="cancelled"] { background: #fbe5e3; color: #8d2635; }
+
+@media (max-width: 760px) {
+  .merchant-demo > .admin-sidebar .admin-sidebar-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .merchant-demo-orders li > div { flex-basis: 100%; }
+}

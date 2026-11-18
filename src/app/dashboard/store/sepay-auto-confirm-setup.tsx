@@ -8,10 +8,12 @@ export default function SePayAutoConfirmSetup({
   hasKey: initialHasKey,
   enabled: initialEnabled,
   qrEnabled,
+  storeId,
 }: {
   hasKey: boolean;
   enabled: boolean;
   qrEnabled: boolean;
+  storeId: string;
 }) {
   const router = useRouter();
   const [hasKey, setHasKey] = useState(initialHasKey);
@@ -21,17 +23,24 @@ export default function SePayAutoConfirmSetup({
   const [isPending, startTransition] = useTransition();
   const [origin, setOrigin] = useState("");
 
-  useEffect(() => setOrigin(window.location.origin), []);
   useEffect(() => {
+    // The origin is only available in the browser after hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOrigin(window.location.origin);
+  }, []);
+  useEffect(() => {
+    // Refresh server-provided connection status after router.refresh().
+    /* eslint-disable react-hooks/set-state-in-effect */
     setHasKey(initialHasKey);
     setEnabled(initialEnabled);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [initialEnabled, initialHasKey]);
   const webhookUrl = origin ? `${origin}/api/webhooks/sepay` : "";
 
   function createKey() {
     setNotice("");
     startTransition(async () => {
-      const result = await createSePayWebhookKey();
+      const result = await createSePayWebhookKey(storeId);
       if (!result.ok) {
         setNotice(result.message);
         return;

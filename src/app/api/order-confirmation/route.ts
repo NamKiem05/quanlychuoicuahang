@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import nodemailer from "nodemailer";
+import { applicationMailer } from "@/lib/email/smtp";
 
 type ConfirmationDetails = {
   customer_email: string;
@@ -57,12 +57,6 @@ export async function POST(request: Request) {
     return Response.json({ sent: false, reason: "invalid_request" }, { status: 400 });
   }
 
-  const gmailUser = process.env.GMAIL_USER?.trim();
-  const gmailAppPassword = process.env.GMAIL_APP_PASSWORD?.replace(/\s/g, "");
-  if (!gmailUser || !gmailAppPassword) {
-    return Response.json({ sent: false, reason: "not_configured" });
-  }
-
   try {
     const supabase = await createClient();
     const { data, error } = await supabase.rpc("get_order_confirmation_details", {
@@ -108,15 +102,9 @@ export async function POST(request: Request) {
       "Dùng mã đơn và số điện thoại đã đặt để tra cứu.",
     ].join("\n\n");
 
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: { user: gmailUser, pass: gmailAppPassword },
-      connectionTimeout: 10_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 15_000,
-    });
+    const { transporter, from } = await applicationMailer();
     await transporter.sendMail({
-      from: { name: "Bếp Nhà Mơ", address: gmailUser },
+      from,
       to: details.customer_email,
       subject: `Mã đơn hàng ${publicCode} · Bếp Nhà Mơ`,
       html,

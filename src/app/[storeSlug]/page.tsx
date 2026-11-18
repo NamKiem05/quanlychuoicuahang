@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import StorefrontClient, {
   type StorefrontCategory,
   type StorefrontProductOptionGroup,
@@ -7,14 +8,19 @@ import StorefrontClient, {
   type StorefrontReview,
 } from "@/app/storefront-client";
 import { createClient } from "@/lib/supabase/server";
+import type { OrderHours } from "@/lib/store-order-hours";
 import {
   isStoreThemePreset,
   isStorefrontLayoutPreset,
+  isStorefrontStyle,
   normalizeHiddenSections,
   normalizeSectionOrder,
+  getStoreBannerUrls,
 } from "@/lib/store-appearance";
 
 type StorePageProps = { params: Promise<{ storeSlug: string }> };
+
+export const instant = false;
 
 export async function generateMetadata({ params }: StorePageProps): Promise<Metadata> {
   const { storeSlug } = await params;
@@ -47,14 +53,18 @@ export default async function StorePage({ params }: StorePageProps) {
   if (storeError || !store) notFound();
 
   const [
-    { data: categoryRows },
+    categoryResult,
     { data: productRows },
     { data: reviewRows },
     { data: paymentSettings },
+    { data: schedule },
+    { data: styleSettings },
+    { data: planAllowsOrders },
+    { data: bannerSettings },
   ] = await Promise.all([
     supabase
       .from("categories")
-      .select("id, name")
+      .select("id, name, image_url")
       .eq("store_id", store.id)
       .eq("is_active", true)
       .order("sort_order"),
@@ -77,7 +87,14 @@ export default async function StorePage({ params }: StorePageProps) {
       .eq("store_id", store.id)
       .eq("is_enabled", true)
       .maybeSingle(),
+    supabase.from("stores").select("order_hours").eq("id", store.id).maybeSingle(),
+    supabase.from("stores").select("storefront_style").eq("id", store.id).maybeSingle(),
+    supabase.rpc("merchant_plan_allows_orders", { target_store: store.id }),
+    supabase.from("stores").select("banner_urls").eq("id", store.id).maybeSingle(),
   ]);
+  const { data: categoryRows } = categoryResult.error?.code === "42703" || categoryResult.error?.code === "PGRST204"
+    ? await supabase.from("categories").select("id, name").eq("store_id", store.id).eq("is_active", true).order("sort_order")
+    : categoryResult;
 
   const productIds = (productRows ?? []).map((product) => product.id);
   const { data: optionGroupRows } = productIds.length
@@ -110,6 +127,7 @@ export default async function StorePage({ params }: StorePageProps) {
   const categories: StorefrontCategory[] = (categoryRows ?? []).map((category) => ({
     id: category.id,
     name: category.name,
+    image: "image_url" in category && typeof category.image_url === "string" ? category.image_url : null,
   }));
   const categoryNameById = new Map(categories.map((category) => [category.id, category.name]));
   const products: StorefrontProduct[] = (productRows ?? []).map((product) => ({
@@ -135,10 +153,13 @@ export default async function StorePage({ params }: StorePageProps) {
     createdAt: review.created_at,
   }));
 
+  await connection();
   return (
     <StorefrontClient
       store={{
         ...store,
+        banner_urls: getStoreBannerUrls(bannerSettings?.banner_urls, store.banner_url),
+        accepts_orders: store.accepts_orders && planAllowsOrders !== false,
         theme_preset: isStoreThemePreset(store.theme_preset) ? store.theme_preset : "green",
         storefront_layout: isStorefrontLayoutPreset(store.storefront_layout) ? store.storefront_layout : "classic",
         storefront_section_order: normalizeSectionOrder(store.storefront_section_order),
@@ -146,10 +167,13 @@ export default async function StorePage({ params }: StorePageProps) {
         delivery_radius_m: Number(store.delivery_radius_m),
         delivery_fee_vnd: Number(store.delivery_fee_vnd),
         bankTransfer: paymentSettings ?? null,
+        orderHours: (schedule?.order_hours ?? null) as OrderHours | null,
+        storefront_style: isStorefrontStyle(styleSettings?.storefront_style) ? styleSettings.storefront_style : "original",
       }}
       categories={categories}
       products={products}
       reviews={reviews}
+      initialTimestamp={new Date().getTime()}
     />
   );
 }

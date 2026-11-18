@@ -6,7 +6,7 @@ import { updateStoreLocation } from "../actions";
 
 const TILE_SIZE = 256;
 const DEFAULT_CENTER = { latitude: 10.7769, longitude: 106.7009 };
-const TILE_URL = process.env.NEXT_PUBLIC_MAP_TILE_URL || "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}.png";
+const TILE_URL = process.env.NEXT_PUBLIC_MAP_TILE_URL || "https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}.png";
 
 type Position = { latitude: number; longitude: number };
 type Tile = { key: string; url: string; left: number; top: number };
@@ -63,9 +63,11 @@ function getVisibleTiles(center: Position, zoom: number, width: number, height: 
 export default function StoreLocationPicker({
   initialLatitude,
   initialLongitude,
+  embedded = false,
 }: {
   initialLatitude: number | null;
   initialLongitude: number | null;
+  embedded?: boolean;
 }) {
   const initialPosition: Position | null = initialLatitude == null || initialLongitude == null
     ? null
@@ -173,8 +175,8 @@ export default function StoreLocationPicker({
   const marker = position ? project(position, zoom) : null;
   const centerPixel = project(center, zoom);
 
-  return (
-    <form className="store-location-picker" action={updateStoreLocation}>
+  const fields = (
+    <>
       <p className="dashboard-help">Bấm vào bản đồ để đặt ghim, kéo bản đồ để di chuyển. Bạn cũng có thể dùng vị trí hiện tại nếu đang ở cửa hàng.</p>
       <div
         className="store-location-map"
@@ -228,6 +230,14 @@ export default function StoreLocationPicker({
       {message && <p className="store-location-message" role="status">{message}</p>}
       <input type="hidden" name="latitude" value={position?.latitude ?? ""} />
       <input type="hidden" name="longitude" value={position?.longitude ?? ""} />
+    </>
+  );
+
+  if (embedded) return <div className="store-location-picker">{fields}</div>;
+
+  return (
+    <form className="store-location-picker" action={updateStoreLocation}>
+      {fields}
       <button className="secondary-submit" type="submit" disabled={!position}>Lưu vị trí cửa hàng</button>
     </form>
   );

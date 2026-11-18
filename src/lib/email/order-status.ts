@@ -1,5 +1,5 @@
 import "server-only";
-import nodemailer from "nodemailer";
+import { applicationMailer } from "./smtp";
 
 export type OrderStatusNotice =
   | "confirmed"
@@ -30,7 +30,7 @@ const notices: Record<OrderStatusNotice, { subject: string; title: string; messa
   preparing: {
     subject: "Cửa hàng đang chuẩn bị đơn hàng",
     title: "Đơn hàng đang được chuẩn bị",
-    message: ({ storeName }) => `${storeName} đang chuẩn bị món cho đơn hàng của bạn.`,
+    message: ({ storeName }) => `${storeName} đang chuẩn bị đơn hàng của bạn.`,
   },
   rejected: {
     subject: "Cửa hàng chưa thể nhận đơn hàng",
@@ -42,7 +42,7 @@ const notices: Record<OrderStatusNotice, { subject: string; title: string; messa
     title: "Đơn hàng đã sẵn sàng",
     message: ({ storeName, fulfillment }) => fulfillment === "delivery"
       ? `${storeName} đã chuẩn bị xong đơn hàng và sẽ sớm giao cho bạn.`
-      : `${storeName} đã chuẩn bị xong. Bạn có thể đến cửa hàng nhận món.`,
+      : `${storeName} đã chuẩn bị xong. Bạn có thể đến cửa hàng nhận hàng.`,
   },
   out_for_delivery: {
     subject: "Đơn hàng đang được giao",
@@ -52,7 +52,7 @@ const notices: Record<OrderStatusNotice, { subject: string; title: string; messa
   completed: {
     subject: "Đơn hàng đã hoàn tất",
     title: "Đơn hàng đã hoàn tất",
-    message: ({ storeName }) => `Đơn hàng từ ${storeName} đã được hoàn tất. Cảm ơn bạn đã đặt món!`,
+    message: ({ storeName }) => `Đơn hàng từ ${storeName} đã được hoàn tất. Cảm ơn bạn đã đặt hàng!`,
   },
   cancelled: {
     subject: "Đơn hàng đã được hủy",
@@ -90,9 +90,7 @@ export async function sendOrderStatusNotice(
   details: OrderNoticeDetails,
   noticeType: OrderStatusNotice,
 ) {
-  const gmailUser = process.env.GMAIL_USER?.trim();
-  const gmailAppPassword = process.env.GMAIL_APP_PASSWORD?.replace(/\s/g, "");
-  if (!gmailUser || !gmailAppPassword || !details.customerEmail) return false;
+  if (!details.customerEmail) return false;
 
   try {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3000";
@@ -129,15 +127,9 @@ export async function sendOrderStatusNotice(
       "Dùng mã đơn và số điện thoại đã đặt để tra cứu.",
     ].join("\n\n");
 
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: { user: gmailUser, pass: gmailAppPassword },
-      connectionTimeout: 10_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 15_000,
-    });
+    const { transporter, from } = await applicationMailer();
     await transporter.sendMail({
-      from: { name: "FoodGo", address: gmailUser },
+      from,
       to: details.customerEmail,
       subject: `${notice.subject} · ${details.publicCode}`,
       html,

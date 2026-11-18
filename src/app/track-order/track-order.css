@@ -1,0 +1,51 @@
+.tracking-page {
+  --tracking-blue: #175fce;
+  --tracking-ink: #172b46;
+  --tracking-muted: #52657e;
+  --tracking-line: #dfe8f4;
+  --green: #174e9d;
+  min-height: 100svh;
+  background: radial-gradient(ellipse at 75% 0%, #dceaff, transparent 55%), #f4f7fc;
+  color: var(--tracking-ink);
+}
+
+.tracking-topbar { border-bottom: 1px solid var(--tracking-line); background: #fff; }
+.tracking-topbar > div { display: flex; width: min(100% - 32px, 1120px); min-height: 64px; align-items: center; justify-content: space-between; gap: 12px; margin: auto; }
+.tracking-brand { display: inline-flex; align-items: center; gap: 9px; font-size: 20px; }
+.tracking-brand > span { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 10px; background: var(--tracking-blue); color: #fff; font-weight: 750; }
+.tracking-home-link { color: #174e9d; font-size: 13px; font-weight: 600; }
+.tracking-page .tracking-content { width: min(100% - 32px, 760px); margin: clamp(32px, 7vw, 76px) auto 56px; }
+.tracking-page .tracking-content h1 { margin: 0 0 8px; color: var(--tracking-ink); font-size: clamp(30px, 6vw, 46px); font-weight: 750; line-height: 1.1; letter-spacing: -.04em; }
+.tracking-page .tracking-intro { color: var(--tracking-muted); font-size: 15px; }
+.tracking-page :is(.tracking-form, .tracked-order) { padding: clamp(16px, 4vw, 26px); border: 1px solid var(--tracking-line); border-radius: 16px; background: #fff; box-shadow: 0 10px 30px #163b7210; }
+.tracking-page .tracking-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; align-items: end; gap: 12px; margin-top: 22px; }
+.tracking-page .tracking-form label { min-width: 0; color: var(--tracking-ink); font-size: 14px; }
+.tracking-page .tracking-form input { min-height: 46px; border-color: #cad8ea; border-radius: 9px; background: #fff; color: var(--tracking-ink); font-size: 16px; }
+.tracking-page .tracking-form input::placeholder { color: #65788f; font-size: 14px; }
+.tracking-page .tracking-submit { display: inline-flex; min-height: 46px; align-items: center; justify-content: space-between; gap: 10px; padding: 0 14px; border-radius: 9px; background: var(--tracking-blue); color: #fff; font-size: 14px; font-weight: 700; white-space: nowrap; }
+.tracking-page .tracking-submit:hover:not(:disabled) { background: #124eae; }
+.tracking-page .tracking-form > .order-error { grid-column: 1 / -1; grid-row: 2; }
+.tracking-page :is(a, button, input, textarea, select):focus-visible { outline: 2px solid var(--tracking-blue); outline-offset: 2px; }
+
+.tracking-page .tracked-order > header { flex-wrap: wrap; align-items: flex-start; }
+.tracking-page .tracked-order > header h2 { margin: 0; font-size: clamp(19px, 4vw, 25px); font-weight: 750; overflow-wrap: anywhere; }
+.tracking-page .tracked-order > header div > span { color: var(--tracking-muted); font-size: 13px; overflow-wrap: anywhere; }
+.tracking-page .tracked-order > header b { color: var(--tracking-ink); font-size: inherit; letter-spacing: 0; }
+.tracking-page .tracked-order > header .status-badge { padding: 5px 9px; font-size: 12px; }
+.tracking-page :is(.tracked-store, .tracking-refresh-note, .tracked-delivery-summary b, .tracked-delivery-summary span, .tracked-delivery-summary small) { color: var(--tracking-muted); font-size: 13px; }
+.tracking-page .order-ready-estimate { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 12px 14px; border-radius: 10px; background: #eaf3ff; color: #174e9d; font-size: 14px; }
+.tracking-page .order-ready-estimate strong { font-size: 18px; }
+.tracking-items-title { margin: 19px 0 8px; font-size: 16px; font-weight: 750; }
+.tracking-page .tracked-order ul { border-color: var(--tracking-line); }
+.tracking-page .tracked-item { color: var(--tracking-ink); font-size: 14px; }
+.tracking-page .tracked-item-row > span { overflow-wrap: anywhere; }
+.tracking-page :is(.tracked-payment, .tracked-delivery-summary, .review-form) { border-color: var(--tracking-line); border-radius: 10px; background: #f7faff; }
+.tracking-page :is(.tracked-payment-heading b, .review-form label, .tracked-cancel-form label, .tracked-cancellation) { font-size: 13px; }
+.tracking-page :is(.review-form textarea, .review-form select, .tracked-cancel-form textarea) { font-size: 16px; }
+.tracking-page .tracked-total { align-items: baseline; font-size: 15px; }
+.tracking-page .tracked-total strong { color: #174e9d; font-size: clamp(20px, 5vw, 26px); }
+
+@media (max-width: 620px) {
+  .tracking-page .tracking-form { grid-template-columns: minmax(0, 1fr); }
+  .tracking-page .tracking-form > .order-error { grid-row: auto; }
+}

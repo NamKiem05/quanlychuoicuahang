@@ -92,3 +92,6 @@
   .admin-messages-compose textarea { min-height: 48px; }
 }
 
+.admin-chat-assignment { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 16px; border-bottom: 1px solid #e7ecf3; background: #fff; color: #76899f; font-size: 10px; }
+.admin-chat-assignment select { max-width: 200px; margin-left: 7px; padding: 5px 8px; border: 1px solid #dce6f1; border-radius: 7px; background: #fff; color: #385676; font: inherit; }
+.admin-chat-assignment small { color: #bc4954; }

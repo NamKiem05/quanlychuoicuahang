@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { redirect } from "next/navigation";
-import { createCategory } from "../actions";
-import { dashboardMessages, formatPrice, getMerchantContext } from "../data";
+import { dashboardMessages, getMerchantContext } from "../data";
+import CategoryForm from "./category-form";
 import ProductForm from "./product-form";
 import ProductAdminList from "./product-admin-list";
 import Toast from "@/app/toast";
@@ -9,14 +10,25 @@ import { toastVariantForMessage } from "@/lib/toast";
 
 export const metadata: Metadata = { title: "Thực đơn | Quản lý cửa hàng" };
 
-export default async function MerchantMenuPage({ searchParams }: { searchParams: Promise<{ message?: string }> }) {
+const productFields = "id, name, slug, description, price_vnd, status, category_id, image_url, stock_quantity, created_at";
+const categoryFields = "id, name, slug, sort_order";
+
+export default async function MerchantMenuPage({ searchParams }: { searchParams: Promise<{ message?: string; edit?: string }> }) {
   const [{ supabase, store }, query] = await Promise.all([getMerchantContext(), searchParams]);
   if (!store) redirect("/dashboard");
 
-  const [{ data: categories }, { data: products }] = await Promise.all([
-    supabase.from("categories").select("id, name, slug, sort_order").eq("store_id", store.id).order("sort_order"),
-    supabase.from("products").select("id, name, slug, description, price_vnd, status, category_id, image_url, stock_quantity, created_at").eq("store_id", store.id).order("created_at", { ascending: false }),
+  const [categoryResult, productResult] = await Promise.all([
+    supabase.from("categories").select(`${categoryFields}, image_url`).eq("store_id", store.id).order("sort_order"),
+    supabase.from("products").select(`${productFields}, low_stock_threshold`).eq("store_id", store.id).order("created_at", { ascending: false }),
   ]);
+  const categoryImagesUnavailable = categoryResult.error?.code === "42703" || categoryResult.error?.code === "PGRST204";
+  const { data: categories } = categoryImagesUnavailable
+    ? await supabase.from("categories").select(categoryFields).eq("store_id", store.id).order("sort_order")
+    : categoryResult;
+  const thresholdUnavailable = productResult.error?.code === "42703" || productResult.error?.code === "PGRST204";
+  const { data: products, error: productsError } = thresholdUnavailable
+    ? await supabase.from("products").select(productFields).eq("store_id", store.id).order("created_at", { ascending: false })
+    : productResult;
   const productIds = (products ?? []).map((product) => product.id);
   const { data: optionGroupRows } = productIds.length
     ? await supabase.from("product_option_groups").select("id, product_id, name, selection_mode, min_selections, max_selections, sort_order").in("product_id", productIds).order("sort_order")
@@ -59,19 +71,33 @@ export default async function MerchantMenuPage({ searchParams }: { searchParams:
       <h1 className="admin-page-title">Thực đơn</h1>
       <p className="dashboard-intro">Quản lý danh mục và các món đang hiển thị trên website {store.name}.</p>
       <Toast message={message} variant={query.message ? toastVariantForMessage(query.message) : "success"} />
+      {thresholdUnavailable && <p className="dashboard-help" role="status">Cài đặt ngưỡng cảnh báo tồn kho sẽ xuất hiện sau khi cập nhật cơ sở dữ liệu.</p>}
 
       <div className="dashboard-columns merchant-menu-forms">
-        <section className="dashboard-card">
+        <section className="dashboard-card" id="categories">
           <div className="dashboard-card-heading">
             <div><span className="card-number">01</span><h2>Danh mục</h2></div>
             <p>Nhóm món để khách dễ tìm.</p>
           </div>
-          <form className="dashboard-form compact-form" action={createCategory}>
-            <label>Tên danh mục<input name="name" required maxLength={100} placeholder="Ví dụ: Món chính" /></label>
-            <button className="secondary-submit" type="submit">+ Thêm danh mục</button>
-          </form>
+          <CategoryForm key={`${store.id}:${categories?.length ?? 0}`} storeId={store.id} imagesAvailable={!categoryImagesUnavailable} />
           <ul className="category-admin-list">
-            {categories?.map((category) => <li key={category.id}><span>{category.name}</span><small>/{category.slug}</small></li>)}
+            {categories?.map((category) => {
+              const image = "image_url" in category && typeof category.image_url === "string" ? category.image_url : null;
+              return (
+                <li className="category-admin-entry" key={category.id}>
+                  <details>
+                    <summary>
+                      <span className="category-admin-identity">
+                        {image && <Image src={image} width={36} height={36} alt="" unoptimized />}
+                        {category.name}
+                      </span>
+                      <span className="category-admin-edit">Sửa</span>
+                    </summary>
+                    <CategoryForm key={JSON.stringify([category.name, image])} storeId={store.id} imagesAvailable={!categoryImagesUnavailable} category={{ id: category.id, name: category.name, image }} />
+                  </details>
+                </li>
+              );
+            })}
             {!categories?.length && <li className="empty-row">Chưa có danh mục.</li>}
           </ul>
         </section>
@@ -81,16 +107,19 @@ export default async function MerchantMenuPage({ searchParams }: { searchParams:
             <div><span className="card-number">02</span><h2>Thêm món ăn</h2></div>
             <p>Nhập món mới vào thực đơn.</p>
           </div>
-          <ProductForm storeId={store.id} categories={categories ?? []} />
+          <ProductForm storeId={store.id} categories={categories ?? []} showLowStockThreshold={!thresholdUnavailable} />
         </section>
       </div>
 
       <section className="dashboard-card product-admin-card merchant-page-card">
         <div className="dashboard-card-heading">
           <div><span className="card-number">03</span><h2>Danh sách món</h2></div>
-          <p>{products?.length ?? 0} món · Chọn một món để chỉnh sửa hoặc quản lý</p>
+          {!productsError && <p>{products?.length ?? 0} món · Chọn một món để chỉnh sửa hoặc quản lý</p>}
         </div>
-        <ProductAdminList
+        {productsError ? <p className="admin-error" role="alert">Chưa tải được danh sách món. Vui lòng tải lại trang.</p> : <ProductAdminList
+          key={query.edit ?? ""}
+          initialProductId={query.edit}
+          showLowStockThreshold={!thresholdUnavailable}
           storeId={store.id}
           categories={(categories ?? []).map((category) => ({ id: category.id, name: category.name }))}
           products={(products ?? []).map((product) => ({
@@ -102,9 +131,10 @@ export default async function MerchantMenuPage({ searchParams }: { searchParams:
             image_url: product.image_url,
             description: product.description,
             stock_quantity: product.stock_quantity,
+            low_stock_threshold: "low_stock_threshold" in product ? Number(product.low_stock_threshold) : 5,
             optionGroups: optionGroupsByProductId.get(product.id) ?? [],
           }))}
-        />
+        />}
       </section>
     </main>
   );

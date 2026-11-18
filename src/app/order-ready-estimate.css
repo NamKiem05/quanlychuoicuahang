@@ -1,0 +1,6 @@
+.merchant-ready-time-form { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.merchant-ready-time-select { display: grid; gap: 4px; color: #52637b; font-size: 14px; }
+.merchant-ready-time-select select { min-height: 36px; padding: 0 10px; border: 1px solid #dfe6f0; border-radius: 7px; background: #fff; color: #17243a; font-size: 14px; }
+.order-modal-actions .merchant-ready-time-form .order-action { font-size: 12px; }
+.order-modal-note.order-ready-estimate { font-size: 14px; }
+.order-ready-estimate strong { font-size: 16px; }

@@ -1,0 +1,16 @@
+.admin-orders-watch { margin: 16px 0; padding: clamp(14px, 2vw, 24px); border: 1px solid #dfe6f0; border-radius: 14px; background: #fff; color: #17243a; }
+.admin-orders-watch > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 12px; }
+.admin-orders-watch h2 { margin: 0; font-size: 18px; font-weight: 700; }
+.admin-orders-watch a { color: #175fce; font-size: 12px; font-weight: 650; }
+.admin-orders-watch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 12px; }
+.admin-orders-watch-group { min-width: 0; padding: 12px; border: 1px solid #e6edf5; border-radius: 10px; background: #f8fafd; }
+.admin-orders-watch-group h3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; font-size: 14px; font-weight: 750; }
+.admin-orders-watch-group h3 > span { padding: 2px 7px; border-radius: 999px; background: #e5efff; color: #174e9d; font-size: 12px; }
+.admin-orders-watch-group p { margin: 5px 0 0; color: #52637b; font-size: 12px; }
+.admin-orders-watch-group p[role="alert"] { color: #913c36; }
+.admin-orders-watch-group ul { margin: 8px 0 0; padding: 0; list-style: none; }
+.admin-orders-watch-group li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 0; border-top: 1px solid #e6edf5; }
+.admin-orders-watch-group li > div:first-child { display: grid; flex: 1 1 85px; min-width: 0; gap: 2px; overflow-wrap: anywhere; font-size: 12px; }
+.admin-orders-watch-group li small { color: #7a4118; font-size: 11px; }
+.admin-orders-watch-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-orders-watch a:focus-visible { outline: 2px solid #216cdb; outline-offset: 2px; }

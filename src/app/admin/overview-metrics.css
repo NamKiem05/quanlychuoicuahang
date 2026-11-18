@@ -1,0 +1,11 @@
+.admin-overview-extra { margin: 20px 0; padding: 22px; border: 1px solid #e1e8f2; border-radius: 14px; background: #fff; }
+.admin-overview-extra h2 { margin: 0; color: #1b2b43; font-size: 16px; }
+.admin-overview-extra p { margin: 6px 0 0; color: #738198; font-size: 12px; }
+.admin-plan-counts { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+.admin-plan-counts span { display: flex; align-items: center; gap: 18px; padding: 12px 16px; border-radius: 9px; background: #f3f7fd; color: #51637d; font-size: 12px; }
+.admin-plan-counts b { color: #1d5fbd; font-size: 18px; }
+.admin-activity-list { margin: 14px 0 0; padding: 0; list-style: none; }
+.admin-activity-list li { display: flex; justify-content: space-between; gap: 16px; padding: 11px 0; border-top: 1px solid #edf1f6; font-size: 12px; }
+.admin-activity-list a { color: #274d81; }
+.admin-activity-list time { flex: none; color: #78869a; }
+@media (max-width: 600px) { .admin-activity-list li { flex-direction: column; gap: 4px; } }

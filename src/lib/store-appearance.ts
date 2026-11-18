@@ -7,11 +7,29 @@ export const storeThemes = [
 
 export type StoreThemePreset = (typeof storeThemes)[number]["id"];
 
+export function getStoreBannerUrls(value: unknown, legacyUrl: string | null) {
+  const urls = Array.isArray(value) ? value.filter((url): url is string => typeof url === "string" && url.length > 0) : [];
+  return [...new Set(urls.length ? urls : legacyUrl ? [legacyUrl] : [])].slice(0, 3);
+}
+
+export const storefrontStyles = [
+  { id: "original", label: "Giao diện hiện tại", description: "Banner ngang và thẻ món bo góc." },
+  { id: "modern", label: "Hiện đại", description: "Ảnh bìa bo góc, tiêu đề đậm và thẻ món nổi bật." },
+  { id: "cozy", label: "Ấm cúng", description: "Kiểu chữ có chân, nền ấm và thẻ bo mềm." },
+  { id: "minimal", label: "Tối giản", description: "Đường nét gọn, nền trắng và viền mảnh." },
+] as const;
+
+export type StorefrontStyle = (typeof storefrontStyles)[number]["id"];
+
+export function isStorefrontStyle(value: unknown): value is StorefrontStyle {
+  return storefrontStyles.some((style) => style.id === value);
+}
+
 export const storefrontSectionIds = ["hero", "menu", "reviews", "story"] as const;
 export type StorefrontSection = (typeof storefrontSectionIds)[number];
 
 export const storefrontSections: { id: StorefrontSection; label: string; description: string; required?: boolean }[] = [
-  { id: "hero", label: "Ảnh bìa và giới thiệu", description: "Ảnh chính, lời chào và thông tin quán." },
+  { id: "hero", label: "Banner cửa hàng", description: "Hiển thị trọn ảnh bìa ở phần banner." },
   { id: "menu", label: "Thực đơn", description: "Danh sách món khách có thể chọn và đặt.", required: true },
   { id: "reviews", label: "Đánh giá", description: "Nhận xét đã được cửa hàng duyệt." },
   { id: "story", label: "Giới thiệu cửa hàng", description: "Lời nhắn và thông tin về quán." },
@@ -21,7 +39,7 @@ export const layoutPresets = [
   {
     id: "classic",
     label: "Cân bằng",
-    description: "Giới thiệu trước, tiếp đến là thực đơn.",
+    description: "Banner trước, tiếp đến là thực đơn.",
     sectionOrder: ["hero", "menu", "reviews", "story"],
   },
   {

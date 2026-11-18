@@ -1,0 +1,146 @@
+.overview-revenue-card {
+  margin: 16px 0;
+  padding: clamp(14px, 2vw, 24px);
+  border: 1px solid #dfe6f0;
+  border-radius: 14px;
+  background: #fff;
+  color: #17243a;
+}
+
+.overview-revenue-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 16px;
+}
+
+.overview-revenue-heading h2 { margin: 0; font-size: 20px; font-weight: 700; }
+.overview-revenue-heading > div > span { color: #52637b; font-size: 13px; }
+.overview-revenue-filter { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: end; gap: 10px; max-width: 100%; margin-left: auto; }
+.overview-revenue-filter label { display: grid; width: 155px; min-width: 0; gap: 5px; color: #52637b; font-size: 13px; }
+.overview-revenue-filter input, .overview-revenue-filter button { min-height: 36px; padding: 0 10px; border: 1px solid #dfe6f0; border-radius: 7px; }
+.overview-revenue-filter input { width: 100%; color: #17243a; background: #fff; }
+.overview-revenue-filter button { border-color: #216cdb; background: #216cdb; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+.overview-revenue-filter a { align-self: center; color: #174e9d; font-size: 13px; text-decoration: underline; }
+
+.overview-revenue-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 12px;
+  margin: 18px 0 22px;
+}
+
+.overview-revenue-summary div {
+  display: grid;
+  gap: 5px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #f3f6fb;
+}
+
+.overview-revenue-summary div:first-child { background: #edf4ff; color: #174e9d; }
+.overview-revenue-summary span { color: #52637b; font-size: 13px; }
+.overview-revenue-summary strong { font-size: clamp(20px, 2.5vw, 30px); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.overview-revenue-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 18px 0 22px; }
+.overview-revenue-metric { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 5px 8px; padding: 12px; border: 1px solid #dfe6f0; border-radius: 12px; background: #f8fafd; }
+.overview-revenue-metric > span:first-child { color: #44566e; font-size: 13px; }
+.overview-revenue-metric strong { grid-column: 1 / -1; font-size: clamp(18px, 2.5vw, 27px); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.overview-revenue-metric small { grid-column: 1 / -1; color: #52637b; font-size: 11px; }
+.overview-revenue-change { padding: 2px 6px; border-radius: 999px; background: #e9eef5; color: #44566e; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.overview-revenue-change[data-tone="positive"] { background: #d8f3e4; color: #14603b; }
+.overview-revenue-change[data-tone="negative"] { background: #fbe5e3; color: #913c36; }
+.overview-revenue-chartTitle { margin: 0 0 10px; font-size: 14px; font-weight: 650; }
+.overview-revenue-chartTitle span { color: #52637b; font-weight: 400; }
+.overview-revenue-scroll { overflow-x: auto; }
+.overview-revenue-chart { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; }
+.overview-revenue-axis { position: relative; display: grid; justify-items: end; min-width: 54px; color: #52637b; font-size: 11px; font-variant-numeric: tabular-nums; }
+.overview-revenue-axis span { position: absolute; right: 0; transform: translateY(-50%); white-space: nowrap; }
+.overview-revenue-plot { position: relative; height: clamp(170px, 27vw, 270px); }
+.overview-revenue-line { display: block; width: 100%; height: 100%; }
+.overview-revenue-line line { stroke: #dfe6f0; stroke-dasharray: 3 4; }
+.overview-revenue-line polyline { fill: none; stroke: #216cdb; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.overview-revenue-point {
+  position: absolute;
+  z-index: 1;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+.overview-revenue-point::before { width: 9px; height: 9px; border: 2px solid #fff; border-radius: 50%; background: #216cdb; box-shadow: 0 0 0 1px #216cdb; content: ""; }
+.overview-revenue-point:is(:hover, :focus) { z-index: 2; }
+.overview-revenue-point:focus-visible { outline: 2px solid #216cdb; outline-offset: -3px; }
+.overview-revenue-tooltip {
+  position: absolute;
+  bottom: calc(100% - 2px);
+  left: 50%;
+  display: none;
+  gap: 3px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: #17243a;
+  color: #fff;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.overview-revenue-point:is(:hover, :focus) .overview-revenue-tooltip { display: grid; }
+.overview-revenue-point[data-tooltip-below="true"] .overview-revenue-tooltip { top: calc(100% - 2px); bottom: auto; }
+.overview-revenue-point:nth-of-type(-n + 2) .overview-revenue-tooltip { left: 0; transform: none; }
+.overview-revenue-point:nth-last-of-type(-n + 2) .overview-revenue-tooltip { right: 0; left: auto; transform: none; }
+.overview-revenue-chart .overview-revenue-dates { grid-column: 2; }
+.overview-revenue-dates { display: grid; margin: 0; padding: 0; list-style: none; text-align: center; color: #52637b; font-size: 12px; font-variant-numeric: tabular-nums; }
+.overview-revenue-daily { margin-top: 16px; font-size: 13px; }
+.overview-revenue-daily summary { color: #174e9d; cursor: pointer; }
+.overview-revenue-daily ul { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.overview-revenue-daily li { display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
+.overview-revenue-note { margin: 16px 0 0; padding-top: 12px; border-top: 1px solid #e6edf5; color: #52637b; font-size: 12px; }
+.overview-revenue-payments-link { display: inline-block; margin-top: 7px; color: #175fce; font-size: 13px; font-weight: 650; }
+.overview-revenue-payments-link:hover { text-decoration: underline; }
+.overview-revenue-empty, .overview-revenue-error { margin: 10px 0; color: #52637b; font-size: 13px; }
+.overview-revenue-error { color: #9f2635; }
+.overview-revenue-best-sellers { margin-top: 20px; }
+.overview-revenue-best-sellers h3 { margin: 0 0 8px; font-size: 16px; font-weight: 700; }
+.overview-best-sellers-unit { margin: 0 0 8px; color: #52637b; font-size: 12px; }
+.overview-best-sellers-chart { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); margin: 0; padding: 0; list-style: none; }
+.overview-best-sellers-chart li { min-width: 0; text-align: center; }
+.overview-best-sellers-column { display: flex; height: clamp(116px, 18vw, 190px); flex-direction: column; align-items: center; justify-content: flex-end; border-bottom: 1px solid #dfe6f0; }
+.overview-best-sellers-column strong { flex: none; margin-bottom: 4px; font-size: clamp(10px, 1.4vw, 13px); font-variant-numeric: tabular-nums; }
+.overview-best-sellers-column > span { width: min(60%, 68px); flex-shrink: 0; border-radius: 5px 5px 0 0; background: #216cdb; }
+.overview-best-sellers-name { display: block; padding: 6px 3px 0; color: #44566e; font-size: 12px; overflow-wrap: anywhere; }
+
+@media (max-width: 480px) {
+  .overview-revenue-filter { width: 100%; }
+  .overview-revenue-filter label { flex: 1 1 42%; }
+  .overview-revenue-summary { grid-template-columns: 1fr; gap: 8px; }
+  .overview-revenue-metric { grid-template-columns: 1fr; }
+  .overview-revenue-change { justify-self: start; }
+  .overview-revenue-chart .overview-revenue-dates { font-size: 10px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .overview-revenue-line polyline { animation: overview-revenue-draw 900ms linear both; }
+  .overview-revenue-point { animation: overview-revenue-show-point 150ms ease-out both; }
+}
+
+@keyframes overview-revenue-draw {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0); }
+}
+
+@keyframes overview-revenue-show-point {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.overview-revenue-periods { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
+.overview-revenue-periods a { padding: 7px 12px; border: 1px solid #dce5f1; border-radius: 7px; color: #526782; font-size: 12px; }
+.overview-revenue-periods a[aria-current] { border-color: #216cdb; background: #eaf2ff; color: #1859bd; font-weight: 700; }

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type OrderNotice = {
@@ -27,6 +27,7 @@ type RealtimeOrder = {
 
 export default function OrderNotificationBell({ storeId, storeName }: { storeId: string | null; storeName: string }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [notices, setNotices] = useState<OrderNotice[]>([]);
   const [open, setOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -37,6 +38,9 @@ export default function OrderNotificationBell({ storeId, storeName }: { storeId:
   const audioContextRef = useRef<AudioContext | null>(null);
   const soundEnabledRef = useRef(false);
   const toastTimerRef = useRef<number | null>(null);
+  const refreshOrderViews = useEffectEvent(() => {
+    if (pathname === "/dashboard" || pathname === "/dashboard/orders") router.refresh();
+  });
 
   useEffect(() => {
     if (!storeId) return;
@@ -44,6 +48,14 @@ export default function OrderNotificationBell({ storeId, storeName }: { storeId:
     soundEnabledRef.current = false;
 
     const supabase = createClient();
+    let orderRefreshTimer: number | undefined;
+    const queueOrderRefresh = () => {
+      if (orderRefreshTimer !== undefined) window.clearTimeout(orderRefreshTimer);
+      orderRefreshTimer = window.setTimeout(() => {
+        orderRefreshTimer = undefined;
+        refreshOrderViews();
+      }, 150);
+    };
     const publishNotice = (notice: OrderNotice) => {
       const next = [notice, ...noticesRef.current.filter((item) => item.id !== notice.id)].slice(0, 30);
       noticesRef.current = next;
@@ -78,6 +90,7 @@ export default function OrderNotificationBell({ storeId, storeName }: { storeId:
       }, (payload) => {
         const row = payload.new as RealtimeOrder;
         if (!row.id) return;
+        queueOrderRefresh();
         const notice: OrderNotice = {
           id: row.id,
           code: row.public_code || "Đơn mới",
@@ -95,6 +108,7 @@ export default function OrderNotificationBell({ storeId, storeName }: { storeId:
         table: "orders",
         filter: `store_id=eq.${storeId}`,
       }, (payload) => {
+        queueOrderRefresh();
         const row = payload.new as RealtimeOrder;
         if (!row.id || row.cancellation_request_status !== "pending" || !row.cancellation_requested_at) return;
         const notice: OrderNotice = {
@@ -110,10 +124,12 @@ export default function OrderNotificationBell({ storeId, storeName }: { storeId:
         publishNotice(notice);
       })
       .subscribe((status) => {
+        if (status === "SUBSCRIBED") queueOrderRefresh();
         setConnection(status === "SUBSCRIBED" ? "connected" : status === "CHANNEL_ERROR" || status === "TIMED_OUT" ? "error" : "connecting");
       });
 
     return () => {
+      if (orderRefreshTimer !== undefined) window.clearTimeout(orderRefreshTimer);
       void supabase.removeChannel(channel);
       if (toastTimerRef.current != null) window.clearTimeout(toastTimerRef.current);
       if (audioContextRef.current) void audioContextRef.current.close();

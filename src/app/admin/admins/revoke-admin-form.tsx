@@ -10,7 +10,7 @@ export default function RevokeAdminForm({ userId, email }: { userId: string; ema
         className="quiet-action danger-action"
         type="submit"
         onClick={(event) => {
-          if (!window.confirm("Thu hồi quyền quản trị nền tảng của " + email + "? Tài khoản sẽ chuyển về danh sách tài khoản thường.")) {
+          if (!window.confirm("Thu hồi quyền quản trị nền tảng của " + email + "? Tài khoản quản trị sẽ không còn truy cập được khu vực admin.")) {
             event.preventDefault();
           }
         }}

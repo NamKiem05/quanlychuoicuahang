@@ -1,0 +1,21 @@
+.store-banner-slideshow { width: 100%; min-width: 0; }
+.store-banner-frame { position: relative; overflow: hidden; border-radius: var(--store-style-radius, 12px); background: var(--theme-soft, #f2f7f0); touch-action: pan-y; }
+.store-banner-track { display: flex; transition: transform .5s ease; }
+.store-banner-slide { flex: 0 0 100%; min-width: 0; }
+.store-banner-picture { position: relative; display: block; width: 100%; aspect-ratio: 10 / 3; overflow: hidden; }
+.store-banner-slideshow .store-banner-backdrop { object-fit: cover; filter: blur(34px) brightness(.75); transform: scale(1.15); }
+.store-banner-slideshow .store-banner-image { object-fit: contain; }
+.store-banner-arrow { position: absolute; top: 50%; display: grid; width: 36px; height: 36px; place-items: center; transform: translateY(-50%); border: 1px solid #ffffff9c; border-radius: 50%; background: #ffffffed; color: #25332d; font-size: 27px; line-height: 1; box-shadow: 0 2px 8px #0002; cursor: pointer; }
+.store-banner-arrow.is-previous { left: 10px; }
+.store-banner-arrow.is-next { right: 10px; }
+.store-banner-arrow:hover { background: #fff; }
+.store-banner-controls { display: flex; justify-content: center; align-items: center; gap: 3px; margin-top: 5px; color: var(--green); }
+.store-banner-controls button { display: grid; min-width: 32px; min-height: 32px; padding: 0; place-items: center; border-radius: 50%; color: inherit; cursor: pointer; }
+.store-banner-dot > span { display: block; width: 7px; height: 7px; border: 1px solid currentColor; border-radius: 50%; }
+.store-banner-dot[aria-pressed="true"] > span { background: currentColor; }
+.store-banner-controls button:hover { background: var(--theme-soft); }
+.store-banner-play { font-size: 17px; }
+.store-banner-slideshow :is(a, button):focus-visible { outline: 2px solid var(--green); outline-offset: -3px; }
+@media (prefers-reduced-motion: reduce) {
+  .store-banner-track { transition: none; }
+}

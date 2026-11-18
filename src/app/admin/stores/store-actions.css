@@ -1,0 +1,14 @@
+.admin-platform-shell .store-actions { position: relative; flex: none; }
+.admin-platform-shell .store-actions-trigger { display: grid; width: 38px; height: 38px; place-items: center; padding: 0 0 5px; border: 1px solid #dfe7f1; border-radius: 9px; background: #fff; color: #536b88; font-size: 25px; line-height: 1; cursor: pointer; }
+.admin-platform-shell .store-actions-trigger:hover, .admin-platform-shell .store-actions-trigger[aria-expanded="true"] { border-color: #b6d0ef; background: #eff6ff; color: #1f66c7; }
+.admin-platform-shell .store-actions-trigger:focus-visible, .admin-platform-shell .store-actions-menu a:focus-visible, .admin-platform-shell .store-actions-menu button:focus-visible { outline: 2px solid #2874d5; outline-offset: 2px; }
+.admin-platform-shell .store-actions-menu { position: absolute; z-index: 5; top: calc(100% + 5px); right: 0; width: 185px; padding: 5px; border: 1px solid #e1e8f1; border-radius: 10px; background: #fff; box-shadow: 0 10px 28px #1b365024; }
+.admin-platform-shell .store-actions-menu form { margin: 0; }
+.admin-platform-shell .store-actions-menu a, .admin-platform-shell .store-actions-menu button { display: block; width: 100%; padding: 10px 11px; border: 0; border-radius: 6px; background: transparent; color: #354d6b; text-align: left; font: inherit; font-size: 12px; cursor: pointer; }
+.admin-platform-shell .store-actions-menu a:hover, .admin-platform-shell .store-actions-menu button:hover { background: #f1f6fd; }
+.admin-platform-shell .store-actions-menu .store-action-danger { color: #c43a4c; }
+.admin-platform-shell .store-actions-menu .store-action-danger:hover { background: #fff1f2; }
+.admin-platform-shell .store-actions-menu .store-action-unavailable { display: block; padding: 10px 11px; color: #9da9b8; font-size: 11px; }
+@media (max-width: 760px) { .admin-platform-shell .admin-store-row:has(.store-actions) { position: relative; padding-right: 65px; } .admin-platform-shell .store-actions { position: absolute; top: 15px; right: 15px; } }
+.admin-platform-shell .admin-stores-list { overflow: visible; }
+.admin-platform-shell .admin-store-row:has(.store-actions-trigger[aria-expanded="true"]) { position: relative; z-index: 6; }

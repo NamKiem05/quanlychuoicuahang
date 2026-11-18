@@ -3,17 +3,20 @@ import { banks } from "@viet-qr/core";
 import { redirect } from "next/navigation";
 import StoreLocationPicker from "./location-picker";
 import SePayAutoConfirmSetup from "./sepay-auto-confirm-setup";
-import { updateStoreDeliverySettings, updateStoreOrderAcceptance, updateStorePaymentSettings, updateStoreProfile } from "../actions";
+import { updateStoreDeliverySettings, updateStoreOrderAcceptance, updateStoreOrderHours, updateStorePaymentSettings, updateStoreProfile } from "../actions";
 import { dashboardMessages, getMerchantContext } from "../data";
 import Toast from "@/app/toast";
 import { toastVariantForMessage } from "@/lib/toast";
+import { formatOrderHour, type OrderHours } from "@/lib/store-order-hours";
+import "./order-hours.css";
+import "../order-acceptance-switch.css";
 
 export const metadata: Metadata = { title: "Cửa hàng | Quản lý cửa hàng" };
 
 export default async function MerchantStorePage({ searchParams }: { searchParams: Promise<{ message?: string }> }) {
   const [{ supabase, membership, store }, query] = await Promise.all([getMerchantContext(), searchParams]);
   if (!store || !membership) redirect("/dashboard");
-  const [{ data: paymentSettings }, { data: locationCoordinates }, { data: sepayStatus }] = await Promise.all([
+  const [{ data: paymentSettings }, { data: locationCoordinates }, { data: sepayStatus }, { data: schedule, error: scheduleError }] = await Promise.all([
     supabase
       .from("store_payment_methods")
       .select("bank_code, bank_name, account_number, account_name, is_enabled")
@@ -21,7 +24,9 @@ export default async function MerchantStorePage({ searchParams }: { searchParams
       .maybeSingle(),
     supabase.rpc("get_store_location_coordinates", { requested_store_id: store.id }).maybeSingle(),
     supabase.rpc("get_store_sepay_webhook_status", { requested_store_id: store.id }),
+    supabase.from("stores").select("order_hours").eq("id", store.id).maybeSingle(),
   ]);
+  const orderHours = (schedule?.order_hours ?? null) as OrderHours | null;
   const savedLocation = locationCoordinates as unknown as { latitude: number | null; longitude: number | null } | null;
   const sepayConnection = sepayStatus as unknown as { has_key?: boolean; enabled?: boolean } | null;
   const message = query.message ? dashboardMessages[query.message] : undefined;
@@ -49,7 +54,7 @@ export default async function MerchantStorePage({ searchParams }: { searchParams
       <section className="dashboard-card merchant-order-status-card">
         <div className="dashboard-card-heading">
           <div><span className="card-number">↗</span><h2>Nhận đơn trực tuyến</h2></div>
-          <p>{store.accepts_orders ? "Khách có thể thêm món vào giỏ và đặt hàng." : "Khách vẫn xem được thực đơn nhưng chưa thể đặt hàng."}</p>
+          <p>{store.accepts_orders ? "Khách có thể đặt hàng trong giờ nhận đơn." : "Khách vẫn xem được thực đơn nhưng chưa thể đặt hàng."}</p>
         </div>
         <div className="merchant-order-status-row">
           <span className={"status-badge " + (store.accepts_orders ? "status-active" : "status-suspended")}>
@@ -58,14 +63,40 @@ export default async function MerchantStorePage({ searchParams }: { searchParams
           {membership.role === "owner" ? (
             <form action={updateStoreOrderAcceptance}>
               <input type="hidden" name="accepts_orders" value={store.accepts_orders ? "false" : "true"} />
-              <button className={"merchant-order-toggle-button" + (store.accepts_orders ? " is-paused" : "")} type="submit">
-                {store.accepts_orders ? "Tạm ngưng nhận đơn" : "Mở nhận đơn trở lại"}
+              <button type="submit" role="switch" aria-checked={store.accepts_orders} aria-label="Nhận đơn trực tuyến" className="merchant-order-acceptance-switch">
+                <span aria-hidden="true">{store.accepts_orders ? "ON" : "OFF"}</span>
               </button>
             </form>
           ) : (
             <span className="dashboard-help">Chỉ chủ cửa hàng mới có thể thay đổi trạng thái này.</span>
           )}
         </div>
+      </section>
+
+      <section className="dashboard-card merchant-order-hours" id="order-hours">
+        <div className="dashboard-card-heading">
+          <div><h2>Giờ nhận đơn tự động</h2></div>
+          <p>Giờ Việt Nam. Nếu giờ đóng sớm hơn giờ mở, quán nhận đơn qua nửa đêm.</p>
+        </div>
+        {scheduleError ? <p className="dashboard-help" role="alert">Chưa tải được lịch nhận đơn.</p> : membership.role === "owner" ? (
+          <form className="dashboard-form" action={updateStoreOrderHours}>
+            <label className="merchant-hours-checkbox"><input type="checkbox" name="schedule_enabled" defaultChecked={orderHours !== null} /> Áp dụng lịch nhận đơn</label>
+            <p className="dashboard-help">Bỏ chọn ngày quán nghỉ. Công tắc nhận đơn vẫn có thể tạm ngưng nhận đơn trong giờ mở cửa.</p>
+            {["Thứ hai", "Thứ ba", "Thứ tư", "Thứ năm", "Thứ sáu", "Thứ bảy", "Chủ nhật"].map((label, index) => {
+              const day = (index + 1) % 7;
+              const window = orderHours?.[day];
+              return (
+                <fieldset className="merchant-hours-day" key={day}>
+                  <legend>{label}</legend>
+                  <label className="merchant-hours-checkbox"><input type="checkbox" name={`day_${day}`} defaultChecked={!orderHours || Boolean(window)} /> Nhận đơn</label>
+                  <label>Mở lúc<input type="time" name={`opens_${day}`} defaultValue={formatOrderHour(window?.[0] ?? 480)} /></label>
+                  <label>Đóng lúc<input type="time" name={`closes_${day}`} defaultValue={formatOrderHour(window?.[1] ?? 1260)} /></label>
+                </fieldset>
+              );
+            })}
+            <button className="secondary-submit" type="submit">Lưu lịch nhận đơn</button>
+          </form>
+        ) : <p className="dashboard-help">Chỉ chủ cửa hàng mới chỉnh được lịch nhận đơn.</p>}
       </section>
 
       <div className="merchant-store-details">
@@ -109,7 +140,7 @@ export default async function MerchantStorePage({ searchParams }: { searchParams
           )}
         </section>
 
-        <section className="dashboard-card payment-settings-card">
+        <section className="dashboard-card payment-settings-card" id="payment-settings">
           <div className="dashboard-card-heading">
             <div><span className="card-number">₫</span><h2>Thanh toán QR</h2></div>
             <p>Khoản chuyển sẽ về thẳng tài khoản ngân hàng của cửa hàng.</p>
@@ -140,6 +171,7 @@ export default async function MerchantStorePage({ searchParams }: { searchParams
           )}
           {membership.role === "owner" ? (
             <SePayAutoConfirmSetup
+              storeId={store.id}
               hasKey={Boolean(sepayConnection?.has_key)}
               enabled={Boolean(sepayConnection?.enabled)}
               qrEnabled={Boolean(paymentSettings?.is_enabled)}
@@ -149,7 +181,7 @@ export default async function MerchantStorePage({ searchParams }: { searchParams
           )}
         </section>
 
-        <section className="dashboard-card payment-settings-card">
+        <section className="dashboard-card payment-settings-card" id="delivery-settings">
           <div className="dashboard-card-heading">
             <div><span className="card-number">⌖</span><h2>Giao hàng</h2></div>
             <p>Cửa hàng tự giao đơn đến khách trong bán kính đã chọn.</p>

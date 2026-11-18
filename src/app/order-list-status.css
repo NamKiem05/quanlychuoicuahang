@@ -1,0 +1,2 @@
+.admin-platform-shell .admin-order-results tr.is-order-inactive > td:not(:last-child) { opacity: .68; }
+.admin-platform-shell .admin-order-results tr.is-order-inactive:is(:hover, :focus-within) > td { opacity: 1; }

@@ -1,0 +1,12 @@
+.appearance-banner-images { display: grid; align-content: start; gap: 16px; min-width: 0; }
+.appearance-banner-images .appearance-image-field { width: 100%; padding: 12px; border: 1px solid #dce5f1; border-radius: 10px; background: #f8fbff; }
+.appearance-banner-images .appearance-image-copy b { color: #243c60; font-size: 12px; }
+.appearance-banner-images .appearance-image-copy span { color: #536780; font-size: 11px; }
+.appearance-banner-images .appearance-image-preview { width: 100%; aspect-ratio: 10 / 3; background: #fff; }
+.appearance-banner-images .appearance-image-actions { width: 100%; }
+.appearance-banner-images input:focus-visible { outline: 2px solid #175fce; outline-offset: 2px; }
+.appearance-banner-images .appearance-file-button:focus-within { outline: 2px solid #175fce; outline-offset: 2px; }
+.appearance-preview-banner:has(.store-banner-slideshow) { display: block; height: auto; aspect-ratio: auto; background: transparent; }
+.appearance-preview .store-banner-arrow { width: 26px; height: 26px; min-width: 26px; font-size: 18px; }
+.appearance-preview .store-banner-controls { margin-top: 4px; gap: 3px; }
+.appearance-preview .store-banner-controls button { min-width: 26px; min-height: 26px; }

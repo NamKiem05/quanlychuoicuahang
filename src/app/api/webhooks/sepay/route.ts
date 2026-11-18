@@ -35,9 +35,14 @@ export async function POST(request: Request) {
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > 16_384) return Response.json({ success: false }, { status: 413 });
 
-  const authorization = request.headers.get("authorization") ?? "";
-  const match = authorization.match(/^Apikey\s+([^\s]+)$/i);
-  if (!match) return Response.json({ success: false }, { status: 401 });
+  const authorization = request.headers.get("authorization");
+  const match = authorization?.match(/^Apikey\s+([^\s]+)$/i);
+  if (!match) {
+    console.warn(authorization
+      ? "[SePay] Webhook rejected: Authorization header does not use the expected Apikey format."
+      : "[SePay] Webhook rejected: Authorization header is missing.");
+    return Response.json({ success: false, error: "invalid_authorization_header" }, { status: 401 });
+  }
 
   const secretHash = createHash("sha256").update(match[1]).digest("hex");
   const admin = createAdminClient();
@@ -48,7 +53,10 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (keyError) return Response.json({ success: false }, { status: 500 });
-  if (!key) return Response.json({ success: false }, { status: 401 });
+  if (!key) {
+    console.warn("[SePay] Webhook rejected: API Key does not match a configured store.");
+    return Response.json({ success: false, error: "invalid_api_key" }, { status: 401 });
+  }
 
   const payload = await readPayload(request);
   if (!payload) return Response.json({ success: false }, { status: 400 });
@@ -62,7 +70,10 @@ export async function POST(request: Request) {
       .select("store_id")
       .maybeSingle();
     if (activationError) return Response.json({ success: false }, { status: 500 });
-    if (!activatedKey) return Response.json({ success: false }, { status: 401 });
+    if (!activatedKey) {
+      console.warn("[SePay] Webhook rejected: API Key was replaced before activation.");
+      return Response.json({ success: false, error: "invalid_api_key" }, { status: 401 });
+    }
   }
 
   const transactionId = textField(payload.id);

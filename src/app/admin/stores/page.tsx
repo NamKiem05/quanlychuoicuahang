@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { updateStoreStatus } from "../actions";
+import { requirePlatformAdminAccess } from "@/lib/platform-account";
+import StoreActions from "./store-actions";
 import Toast from "@/app/toast";
 import { toastVariantForMessage } from "@/lib/toast";
+import "./store-stats.css";
 
 export const metadata: Metadata = { title: "Quản lý cửa hàng | Quản trị" };
 
@@ -11,6 +13,7 @@ const messages: Record<string, string> = {
   "invalid-status": "Trạng thái được chọn không hợp lệ.",
   "status-update-failed": "Chưa cập nhật được trạng thái cửa hàng.",
   "status-updated": "Đã cập nhật trạng thái cửa hàng.",
+  "store-deleted": "Đã xóa cửa hàng và lưu lịch sử thao tác.",
 };
 
 const statusLabels: Record<string, string> = {
@@ -23,6 +26,7 @@ const statusLabels: Record<string, string> = {
 export default async function AdminStoresPage({ searchParams }: PageProps<"/admin/stores">) {
   const query = await searchParams;
   const supabase = await createClient();
+  await requirePlatformAdminAccess(supabase);
   const search = (typeof query.q === "string" ? query.q : "")
     .trim()
     .replace(/[^\p{L}\p{N}\s+.-]/gu, "")
@@ -36,7 +40,12 @@ export default async function AdminStoresPage({ searchParams }: PageProps<"/admi
     .order("created_at", { ascending: false });
   if (search) storesQuery = storesQuery.or(`name.ilike.%${search}%,slug.ilike.%${search}%,phone.ilike.%${search}%`);
   if (filterStatus) storesQuery = storesQuery.eq("status", filterStatus);
-  const { data: stores, error } = await storesQuery;
+  const [storesResult, ...stats] = await Promise.all([
+    storesQuery,
+    supabase.from("stores").select("id", { count: "exact", head: true }),
+    ...validStatuses.map((status) => supabase.from("stores").select("id", { count: "exact", head: true }).eq("status", status)),
+  ]);
+  const { data: stores, error } = storesResult;
 
   const storeRows = stores ?? [];
   const message = typeof query.message === "string" ? messages[query.message] : undefined;
@@ -48,6 +57,18 @@ export default async function AdminStoresPage({ searchParams }: PageProps<"/admi
       <p className="dashboard-intro">Duyệt gian hàng mới, tạm dừng hoặc khóa cửa hàng.</p>
       <Toast message={message} variant={typeof query.message === "string" ? toastVariantForMessage(query.message) : "success"} />
       {error && <p className="admin-error" role="alert">Không đọc được danh sách cửa hàng. Kiểm tra quyền truy cập cơ sở dữ liệu.</p>}
+
+      <section className="admin-store-statistics" aria-label="Thống kê cửa hàng toàn hệ thống">
+        {[
+          { label: "Tổng cửa hàng", status: "", icon: "▦", tone: "blue", result: stats[0] },
+          { label: "Chờ duyệt", status: "draft", icon: "◷", tone: "orange", result: stats[1] },
+          { label: "Đang hoạt động", status: "active", icon: "✓", tone: "green", result: stats[2] },
+          { label: "Tạm dừng", status: "paused", icon: "Ⅱ", tone: "purple", result: stats[3] },
+          { label: "Đã khóa", status: "suspended", icon: "⊘", tone: "red", result: stats[4] },
+        ].map(({ label, status, icon, tone, result }) => <Link className={`admin-store-stat is-${tone}`} href={status ? `/admin/stores?status=${status}` : "/admin/stores"} key={label} aria-current={filterStatus === status && !search ? "true" : undefined}>
+          <span className="admin-store-stat-icon" aria-hidden="true">{icon}</span><span className="admin-store-stat-copy"><small>{label}</small><strong>{result.error || result.count === null ? "—" : result.count.toLocaleString("vi-VN")}</strong><span>{result.error ? "Không tải được số liệu" : "Toàn hệ thống"}</span></span>
+        </Link>)}
+      </section>
 
       <form className="dashboard-form merchant-order-filters admin-order-filters" method="get">
         <label>Tìm cửa hàng<input type="search" name="q" maxLength={60} defaultValue={search} placeholder="Tên, đường dẫn hoặc số điện thoại" /></label>
@@ -61,12 +82,12 @@ export default async function AdminStoresPage({ searchParams }: PageProps<"/admi
         </div>
       </form>
 
-      <section className="admin-store-list">
+      <section className="admin-store-list admin-stores-list">
         <div className="admin-list-heading"><h2>Cửa hàng</h2><span>{storeRows.length} kết quả</span></div>
         {storeRows.length ? storeRows.map((store) => (
           <article className="admin-store-row" key={store.id}>
             <div className="admin-store-main">
-              <div className="admin-store-title"><b>{store.name}</b><span className={`status-badge status-${store.status}`}>{statusLabels[store.status] ?? store.status}</span></div>
+              <div className="admin-store-title"><Link href={`/admin/stores/${store.id}`}><b>{store.name}</b></Link><span className={`status-badge status-${store.status}`}>{statusLabels[store.status] ?? store.status}</span></div>
               <span className="admin-store-slug">/{store.slug}</span>
               <div className="admin-store-meta">
                 {store.address && <span>{store.address}</span>}
@@ -74,11 +95,7 @@ export default async function AdminStoresPage({ searchParams }: PageProps<"/admi
                 <span>Tạo ngày {new Date(store.created_at).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</span>
               </div>
             </div>
-            <div className="admin-store-actions">
-              {store.status !== "active" && <form action={updateStoreStatus}><input type="hidden" name="store_id" value={store.id} /><input type="hidden" name="filter_q" value={search} /><input type="hidden" name="filter_status" value={filterStatus} /><button className="approve-button" name="status" value="active" type="submit">{store.status === "draft" ? "Duyệt cửa hàng" : "Kích hoạt"}</button></form>}
-              {store.status === "active" && <form action={updateStoreStatus}><input type="hidden" name="store_id" value={store.id} /><input type="hidden" name="filter_q" value={search} /><input type="hidden" name="filter_status" value={filterStatus} /><button className="quiet-action" name="status" value="paused" type="submit">Tạm dừng</button></form>}
-              {store.status !== "suspended" && <form action={updateStoreStatus}><input type="hidden" name="store_id" value={store.id} /><input type="hidden" name="filter_q" value={search} /><input type="hidden" name="filter_status" value={filterStatus} /><button className="quiet-action danger-action" name="status" value="suspended" type="submit">Khóa</button></form>}
-            </div>
+            <StoreActions storeId={store.id} storeName={store.name} status={store.status} search={search} filterStatus={filterStatus} />
           </article>
         )) : <div className="admin-empty"><span>✳</span><b>Chưa có cửa hàng nào</b><p>Cửa hàng mới sẽ xuất hiện tại đây sau khi chủ quán đăng ký.</p></div>}
       </section>

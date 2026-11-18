@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAdminChatNotifications } from "../admin-chat-notifications";
+import Link from "next/link";
+import { ChatAttachment, ChatFileUpload } from "@/app/chat/chat-attachment";
 
 type ChatStore = { id: string; name: string; slug: string };
 type ChatMessage = {
@@ -12,6 +14,8 @@ type ChatMessage = {
   sender_role: "merchant" | "admin";
   body: string;
   created_at: string;
+  attachment_path?: string | null;
+  attachment_name?: string | null;
 };
 
 function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]) {
@@ -19,7 +23,7 @@ function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]) {
   incoming.forEach((message) => merged.set(message.id, message));
   return [...merged.values()]
     .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
-    .slice(-100);
+    ;
 }
 
 function formatTime(value: string, includeDate = false) {
@@ -31,7 +35,7 @@ function formatTime(value: string, includeDate = false) {
   });
 }
 
-export default function AdminMessages({ stores, initialStoreId }: { stores: ChatStore[]; initialStoreId?: string }) {
+export default function AdminMessages({ stores, initialStoreId, admins }: { stores: ChatStore[]; initialStoreId?: string; admins: { id: string; name: string }[] }) {
   const supabase = useMemo(() => createClient(), []);
   const { unreadByStore, markStoreRead, setActiveStore } = useAdminChatNotifications();
   const [selectedStoreId, setSelectedStoreId] = useState(initialStoreId && stores.some((store) => store.id === initialStoreId) ? initialStoreId : stores[0]?.id ?? "");
@@ -44,16 +48,26 @@ export default function AdminMessages({ stores, initialStoreId }: { stores: Chat
   const [isMobileThreadOpen, setIsMobileThreadOpen] = useState(false);
   const [connection, setConnection] = useState("connecting");
   const [errorMessage, setErrorMessage] = useState("");
+  const [assignedTo, setAssignedTo] = useState("");
+  const [assignmentError, setAssignmentError] = useState("");
+  const [presence, setPresence] = useState<"online" | "offline" | "unknown">("unknown");
+  const [hasOlder, setHasOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const selectedRef = useRef(selectedStoreId);
+  const olderLoadRef = useRef(false);
+  useEffect(() => { selectedRef.current = selectedStoreId; }, [selectedStoreId]);
 
   const activeStore = stores.find((store) => store.id === selectedStoreId) ?? null;
+  const visibleMessages = messages.filter((message) => message.store_id === selectedStoreId);
 
   useEffect(() => {
-    if (initialStoreId && stores.some((store) => store.id === initialStoreId)) {
-      setSelectedStoreId(initialStoreId);
-    } else if (!stores.some((store) => store.id === selectedStoreId)) {
+    // Keep the selected conversation in sync when server-provided stores change.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (!stores.some((store) => store.id === selectedStoreId)) {
       setSelectedStoreId(stores[0]?.id ?? "");
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [initialStoreId, selectedStoreId, stores]);
 
   useEffect(() => {
@@ -76,7 +90,7 @@ export default function AdminMessages({ stores, initialStoreId }: { stores: Chat
     let disposed = false;
     void supabase
       .from("store_admin_messages")
-      .select("id, store_id, sender_id, sender_role, body, created_at")
+      .select("*")
       .in("store_id", stores.map((store) => store.id))
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
@@ -98,6 +112,8 @@ export default function AdminMessages({ stores, initialStoreId }: { stores: Chat
 
   useEffect(() => {
     if (!stores.length) {
+      // The subscription has no channel when there are no stores.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setConnection("idle");
       return;
     }
@@ -119,6 +135,8 @@ export default function AdminMessages({ stores, initialStoreId }: { stores: Chat
   }, [selectedStoreId, stores, supabase]);
 
   useEffect(() => {
+    // Reset the visible thread before the asynchronous fetch for another store.
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (!selectedStoreId) {
       setMessages([]);
       setIsLoading(false);
@@ -127,10 +145,12 @@ export default function AdminMessages({ stores, initialStoreId }: { stores: Chat
     let disposed = false;
     setMessages([]);
     setIsLoading(true);
+    setHasOlder(false);
     setErrorMessage("");
+    /* eslint-enable react-hooks/set-state-in-effect */
     void supabase
       .from("store_admin_messages")
-      .select("id, store_id, sender_id, sender_role, body, created_at")
+      .select("*")
       .eq("store_id", selectedStoreId)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
@@ -138,6 +158,7 @@ export default function AdminMessages({ stores, initialStoreId }: { stores: Chat
       .then(({ data, error }) => {
         if (disposed) return;
         if (error) setErrorMessage("Chưa tải được cuộc trò chuyện. Hãy kiểm tra migration 021 và quyền truy cập.");
+        setHasOlder((data?.length ?? 0) === 100);
         setMessages((current) => mergeMessages(current, ((data ?? []) as ChatMessage[]).reverse()));
         setIsLoading(false);
       });
@@ -145,6 +166,56 @@ export default function AdminMessages({ stores, initialStoreId }: { stores: Chat
   }, [selectedStoreId, supabase]);
 
   useEffect(() => {
+    if (!selectedStoreId) return;
+    let disposed = false;
+    void supabase.from("store_chat_assignments").select("assigned_to").eq("store_id", selectedStoreId).maybeSingle().then(({ data, error }) => {
+      if (disposed) return;
+      setAssignedTo(data?.assigned_to ?? "");
+      setAssignmentError(error ? "Chưa tải được phân công. Cần cập nhật cơ sở dữ liệu." : "");
+    });
+    return () => { disposed = true; };
+  }, [selectedStoreId, supabase]);
+
+  async function assign(value: string) {
+    const storeId = selectedStoreId;
+    setAssignmentError("");
+    const { error } = await supabase.rpc("assign_store_chat", { target_store: storeId, assignee: value || null });
+    if (selectedRef.current !== storeId) return;
+    if (error) setAssignmentError("Chưa cập nhật được phân công. Hãy kiểm tra quyền và migration.");
+    else setAssignedTo(value);
+  }
+
+  useEffect(() => {
+    if (!selectedStoreId) return;
+    let disposed = false;
+    const refresh = async () => {
+      const result = await supabase.from("store_chat_presence").select("last_seen_at").eq("store_id", selectedStoreId).maybeSingle();
+      if (disposed) return;
+      if (result.error) setPresence("unknown");
+      else setPresence(result.data?.last_seen_at && Date.now() - Date.parse(result.data.last_seen_at) < 90000 ? "online" : "offline");
+    };
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 30000);
+    return () => { disposed = true; window.clearInterval(interval); };
+  }, [selectedStoreId, supabase]);
+
+  async function loadOlder() {
+    const first = visibleMessages[0];
+    const storeId = selectedStoreId;
+    if (!first || loadingOlder) return;
+    setLoadingOlder(true);
+    const { data, error } = await supabase.from("store_admin_messages").select("*").eq("store_id", storeId)
+      .or(`created_at.lt.${first.created_at},and(created_at.eq.${first.created_at},id.lt.${first.id})`)
+      .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(100);
+    if (selectedRef.current === storeId) {
+      if (error) setErrorMessage("Chưa tải được tin nhắn cũ.");
+      else { olderLoadRef.current = true; setHasOlder((data?.length ?? 0) === 100); setMessages((current) => mergeMessages(current, (data ?? []) as ChatMessage[])); }
+    }
+    setLoadingOlder(false);
+  }
+
+  useEffect(() => {
+    if (olderLoadRef.current) { olderLoadRef.current = false; return; }
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, selectedStoreId]);
 
@@ -201,7 +272,7 @@ export default function AdminMessages({ stores, initialStoreId }: { stores: Chat
             {visibleStores.map((store) => {
               const latest = latestByStore[store.id];
               const selected = store.id === selectedStoreId;
-              return <button className={`admin-messages-store${selected ? " is-selected" : ""}`} type="button" key={store.id} onClick={() => { setSelectedStoreId(store.id); setIsMobileThreadOpen(true); }} aria-pressed={selected}>
+              return <button className={`admin-messages-store${selected ? " is-selected" : ""}`} type="button" key={store.id} onClick={() => { if (store.id !== selectedStoreId) { setAssignedTo(""); setAssignmentError(""); setPresence("unknown"); } setSelectedStoreId(store.id); setIsMobileThreadOpen(true); }} aria-pressed={selected}>
                 <span className="admin-messages-store-avatar">{store.name.trim().charAt(0).toLocaleUpperCase("vi-VN") || "C"}</span>
                 <span className="admin-messages-store-copy"><b>{store.name}</b><small>{latest ? `${latest.sender_role === "admin" ? "Bạn: " : ""}${latest.body}` : "Bắt đầu cuộc trò chuyện"}</small></span>
                 <span className="admin-messages-store-meta">
@@ -219,23 +290,26 @@ export default function AdminMessages({ stores, initialStoreId }: { stores: Chat
             <header className="admin-messages-thread-header">
               <button className="admin-messages-back" type="button" onClick={() => setIsMobileThreadOpen(false)} aria-label="Quay lại danh sách">←</button>
               <span className="admin-messages-store-avatar">{activeStore.name.trim().charAt(0).toLocaleUpperCase("vi-VN") || "C"}</span>
-              <div><h2>{activeStore.name}</h2><p>/{activeStore.slug} <span>·</span> Hỗ trợ cửa hàng</p></div>
-              <span className={`admin-messages-thread-status is-${connection}`}><i />{connection === "connected" ? "Trực tuyến" : connection === "error" ? "Mất kết nối" : "Đang kết nối"}</span>
+              <div><h2>{activeStore.name}</h2><p>/{activeStore.slug} <span>·</span> <Link href={`/admin/stores/${activeStore.id}`}>Hồ sơ cửa hàng ↗</Link></p></div>
+              <span className={`admin-messages-thread-status is-${connection}`}><i />{connection === "connected" ? "Chat đã kết nối" : connection === "error" ? "Mất kết nối" : "Đang kết nối"}</span>
             </header>
+            <div className="admin-chat-assignment"><span>{presence === "online" ? "● Cửa hàng đang mở dashboard" : presence === "offline" ? "○ Cửa hàng không hoạt động gần đây" : "○ Chưa xác định trạng thái"}</span><label>Nhân viên hỗ trợ <select value={assignedTo} onChange={(event) => void assign(event.target.value)} disabled={!admins.length}><option value="">Chưa phân công</option>{assignedTo && !admins.some((admin) => admin.id === assignedTo) && <option value={assignedTo}>Tài khoản không còn quyền admin</option>}{admins.map((admin) => <option key={admin.id} value={admin.id}>{admin.name}</option>)}</select></label>{assignmentError && <small role="alert">{assignmentError}</small>}</div>
             <div className="admin-messages-history" aria-live="polite" aria-relevant="additions text">
               <div className="admin-messages-day-label"><span>Trao đổi với {activeStore.name}</span></div>
+              {hasOlder && visibleMessages.length > 0 && <button className="admin-chat-load-older" type="button" disabled={loadingOlder} onClick={() => void loadOlder()}>{loadingOlder ? "Đang tải…" : "Xem tin nhắn trước"}</button>}
               {isLoading && <p className="admin-messages-loading">Đang tải tin nhắn…</p>}
-              {!isLoading && messages.length === 0 && <div className="admin-messages-empty"><span>✉</span><b>Chưa có tin nhắn</b><p>Gửi lời chào để bắt đầu trao đổi với cửa hàng này.</p></div>}
-              {messages.map((message) => {
+              {!isLoading && visibleMessages.length === 0 && <div className="admin-messages-empty"><span>✉</span><b>Chưa có tin nhắn</b><p>Gửi lời chào để bắt đầu trao đổi với cửa hàng này.</p></div>}
+              {visibleMessages.map((message) => {
                 const ownMessage = message.sender_role === "admin";
                 return <article key={message.id} className={`admin-message-bubble${ownMessage ? " is-own" : ""}`}>
                   {!ownMessage && <small>{activeStore.name}</small>}
-                  <p>{message.body}</p><time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
+                  {message.attachment_path && message.attachment_name ? <ChatAttachment path={message.attachment_path} name={message.attachment_name} /> : <p>{message.body}</p>}<time dateTime={message.created_at}>{formatTime(message.created_at)}</time>
                 </article>;
               })}
               <div ref={endRef} />
             </div>
             {errorMessage && <p className="admin-messages-error" role="alert">{errorMessage}</p>}
+            <ChatFileUpload key={selectedStoreId} storeId={selectedStoreId} onSent={(sent) => { if (selectedRef.current === sent.store_id) setMessages((current) => mergeMessages(current, [sent])); setLatestByStore((current) => ({ ...current, [sent.store_id]: sent })); }} />
             <form className="admin-messages-compose" onSubmit={sendMessage}>
               <textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={submitOnEnter} rows={2} maxLength={2000} placeholder={`Nhắn tin cho ${activeStore.name}...`} aria-label="Nội dung tin nhắn" disabled={isSending} />
               <div><span>Enter để gửi · Shift + Enter để xuống dòng</span><button type="submit" disabled={!draft.trim() || isSending}>{isSending ? "Đang gửi…" : "Gửi tin nhắn　➤"}</button></div>

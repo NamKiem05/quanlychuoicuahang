@@ -1,0 +1,16 @@
+.admin-store-statistics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
+.admin-store-stat { display: flex; align-items: center; min-width: 0; gap: 12px; padding: 17px 14px; border: 1px solid #e1e8f2; border-radius: 12px; background: #fff; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.admin-store-stat:hover { transform: translateY(-2px); border-color: #b6cfee; box-shadow: 0 7px 18px #1d47700d; }
+.admin-store-stat[aria-current] { border-color: #a9c8f2; box-shadow: 0 0 0 2px #eaf2ff; }
+.admin-store-stat:focus-visible { outline: 2px solid #2874d5; outline-offset: 2px; }
+.admin-store-stat-icon { display: grid; flex: none; width: 40px; height: 40px; place-items: center; border-radius: 11px; background: #e9f1ff; color: #2474e4; font-size: 19px; font-weight: 700; }
+.admin-store-stat.is-orange .admin-store-stat-icon { background: #fff0e2; color: #e6841e; }
+.admin-store-stat.is-green .admin-store-stat-icon { background: #e1f7ef; color: #169a6a; }
+.admin-store-stat.is-purple .admin-store-stat-icon { background: #eee8ff; color: #8258db; }
+.admin-store-stat.is-red .admin-store-stat-icon { background: #ffebee; color: #ce4e61; }
+.admin-store-stat-copy { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.admin-store-stat-copy small { color: #718198; font-size: 10px; font-weight: 700; }
+.admin-store-stat-copy strong { color: #1d2d47; font-size: 24px; line-height: 1.1; }
+.admin-store-stat-copy > span { color: #99a5b5; font-size: 9px; }
+@media (max-width: 1200px) { .admin-store-statistics { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .admin-store-statistics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .admin-store-stat { padding: 13px 10px; gap: 8px; } .admin-store-stat-icon { width: 34px; height: 34px; } .admin-store-stat-copy strong { font-size: 21px; } }

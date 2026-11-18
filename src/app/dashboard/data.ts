@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
+import { requireMerchantAccount } from "@/lib/platform-account";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getActiveMembership } from "@/lib/active-store";
 
 export async function getMerchantContext() {
   await connection();
@@ -9,24 +11,22 @@ export async function getMerchantContext() {
   const userId = authData?.claims?.sub;
 
   if (!userId) redirect("/login");
+  await requireMerchantAccount(supabase);
 
-  const { data: membership } = await supabase
-    .from("store_members")
-    .select("store_id, role")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const membership = await getActiveMembership(supabase, userId);
 
-  const { data: store } = membership
+  const storeResult = membership
     ? await supabase
         .from("stores")
         .select("id, name, slug, status, phone, address, accepts_orders, delivery_enabled, delivery_radius_m, delivery_fee_vnd")
         .eq("id", membership.store_id)
         .maybeSingle()
-    : { data: null };
+    : { data: null, error: null };
+  if (storeResult.error || (membership && !storeResult.data)) throw new Error("Không tải được cửa hàng đã chọn.");
+  const store = storeResult.data;
 
-  return { supabase, userId, membership, store };
+  const email = typeof authData.claims.email === "string" ? authData.claims.email : null;
+  return { supabase, userId, email, membership, store, requestedPlan: authData.claims.user_metadata?.requested_plan };
 }
 
 export function formatPrice(price: number) {
@@ -51,6 +51,7 @@ export const reviewStatusLabels: Record<string, string> = {
 };
 
 export const dashboardMessages: Record<string, string> = {
+  "store-changed": "Cửa hàng đang làm việc đã thay đổi. Hãy kiểm tra lại thông tin trước khi thực hiện thao tác.",
   "invalid-store": "Hãy nhập tên cửa hàng và địa chỉ trang hợp lệ.",
   "invalid-store-profile": "Hãy nhập tên cửa hàng từ 2 đến 120 ký tự và đường dẫn hợp lệ.",
   "store-slug-taken": "Đường dẫn này đã được cửa hàng khác sử dụng. Hãy chọn đường dẫn khác.",
@@ -61,6 +62,12 @@ export const dashboardMessages: Record<string, string> = {
   "store-order-setting-failed": "Chưa thay đổi được trạng thái nhận đơn. Hãy tải lại trang rồi thử lại.",
   "store-orders-enabled": "Cửa hàng đã mở nhận đơn trở lại.",
   "store-orders-paused": "Cửa hàng đã tạm ngưng nhận đơn.",
+  "invalid-store-order-hours": "Giờ mở và giờ đóng phải hợp lệ và khác nhau.",
+  "store-order-hours-failed": "Chưa lưu được lịch nhận đơn. Vui lòng thử lại.",
+  "store-order-hours-updated": "Đã lưu lịch nhận đơn.",
+  "invalid-order-ready-estimate": "Chọn thời gian chuẩn bị là 15, 30 hoặc 45 phút.",
+  "order-ready-estimate-failed": "Chưa cập nhật được giờ dự kiến. Hãy kiểm tra trạng thái đơn rồi thử lại.",
+  "order-ready-estimate-updated": "Đã cập nhật giờ dự kiến sẵn sàng.",
   "invalid-payment-settings": "Thông tin ngân hàng chưa hợp lệ. Hãy kiểm tra ngân hàng, số tài khoản, tên chủ tài khoản và trạng thái.",
   "payment-settings-failed": "Chưa lưu được phương thức thanh toán. Hãy thử lại.",
   "payment-settings-updated": "Đã lưu phương thức thanh toán QR.",
@@ -78,6 +85,11 @@ export const dashboardMessages: Record<string, string> = {
   "invalid-category": "Hãy nhập tên danh mục hợp lệ.",
   "category-create-failed": "Chưa tạo được danh mục. Kiểm tra tên có bị trùng không.",
   "category-created": "Đã thêm danh mục.",
+  "invalid-reserved-store-slug": "Đường dẫn này dành riêng cho hệ thống. Hãy chọn đường dẫn khác.",
+  "category-updated": "Đã cập nhật danh mục.",
+  "category-deleted": "Đã xóa danh mục.",
+  "category-image-cleanup-failed": "Đã cập nhật danh mục. Ảnh cũ chưa được dọn khỏi kho.",
+  "category-delete-image-cleanup-failed": "Đã xóa danh mục. Ảnh cũ chưa được dọn khỏi kho.",
   "invalid-promotion": "Thông tin mã khuyến mãi chưa hợp lệ. Hãy kiểm tra mã, mức giảm, ngày áp dụng và giới hạn lượt dùng.",
   "promotion-create-failed": "Chưa tạo được mã. Mã này có thể đã tồn tại trong cửa hàng.",
   "promotion-created": "Đã tạo mã khuyến mãi.",
@@ -105,7 +117,9 @@ export const dashboardMessages: Record<string, string> = {
   "product-deleted-image-cleanup-failed": "Đã xóa món nhưng chưa dọn được ảnh khỏi kho lưu trữ.",
   "invalid-order-status": "Trạng thái đơn hàng không hợp lệ.",
   "order-status-failed": "Chưa cập nhật được đơn. Có thể trạng thái đã đổi ở nơi khác.",
-  "order-status-updated": "Đã cập nhật trạng thái và gửi email cho khách.",
+  "order-status-updated": "Đã cập nhật trạng thái. Email thông báo được xử lý sau nếu khách có địa chỉ email.",
+  "order-notice-sent": "Đã gửi email thông báo trạng thái đơn cho khách hàng.",
+  "order-notice-failed": "Chưa gửi được thông báo. Hãy kiểm tra email khách hàng, trạng thái đơn và cấu hình gửi email.",
   "order-status-updated-email-failed": "Đã cập nhật đơn hàng nhưng chưa gửi được email cho khách. Hãy kiểm tra email của đơn và cấu hình Gmail.",
   "cancellation-decision-failed": "Chưa xử lý được yêu cầu hủy. Có thể đơn đã được cập nhật ở nơi khác.",
   "cancellation-request-approved": "Đã chấp nhận yêu cầu hủy và gửi email cho khách.",
@@ -115,6 +129,8 @@ export const dashboardMessages: Record<string, string> = {
   "payment-confirmation-failed": "Chưa xác nhận được khoản chuyển. Có thể đơn đã đổi trạng thái hoặc không còn chờ thanh toán.",
   "payment-confirmed": "Đã xác nhận thanh toán và gửi email cho khách.",
   "payment-confirmed-email-failed": "Đã xác nhận thanh toán nhưng chưa gửi được email cho khách. Hãy kiểm tra email của đơn và cấu hình Gmail.",
+  "order-refund-failed": "Chưa ghi nhận được hoàn tiền. Hãy kiểm tra trạng thái đơn và quyền chủ cửa hàng.",
+  "order-refund-recorded": "Đã ghi nhận hoàn tiền cho đơn hàng.",
   "invalid-review-status": "Trạng thái đánh giá không hợp lệ.",
   "review-status-failed": "Chưa cập nhật được đánh giá. Hãy tải lại trang rồi thử lại.",
   "review-status-updated": "Đã cập nhật trạng thái đánh giá.",

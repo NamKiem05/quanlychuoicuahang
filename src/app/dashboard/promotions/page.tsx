@@ -4,6 +4,7 @@ import { createPromotion, updatePromotionActive } from "../actions";
 import { dashboardMessages, formatPrice, getMerchantContext } from "../data";
 import Toast from "@/app/toast";
 import { toastVariantForMessage } from "@/lib/toast";
+import { requireMerchantPremium } from "@/lib/merchant-billing";
 
 export const metadata: Metadata = { title: "Khuyến mãi | Quản lý cửa hàng" };
 
@@ -25,6 +26,7 @@ function formatDate(value: string | null) {
 export default async function MerchantPromotionsPage({ searchParams }: { searchParams: Promise<{ message?: string }> }) {
   const [{ supabase, store }, query] = await Promise.all([getMerchantContext(), searchParams]);
   if (!store) redirect("/dashboard");
+  await requireMerchantPremium(supabase, store.id);
 
   const { data: promotions } = await supabase
     .from("store_promotions")

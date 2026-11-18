@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import styles from "@/app/chat/chat-notifications.module.css";
@@ -29,6 +30,7 @@ export function useAdminChatNotifications() {
 }
 
 export default function AdminChatNotificationsProvider({ stores, children }: { stores: ChatStore[]; children: ReactNode }) {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [unreadByStore, setUnreadByStore] = useState<Record<string, number>>({});
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -71,7 +73,7 @@ export default function AdminChatNotificationsProvider({ stores, children }: { s
           });
           browserNotice.onclick = () => {
             window.focus();
-            window.location.href = `/admin/messages?store=${encodeURIComponent(message.store_id)}`;
+            router.push(`/admin/messages?store=${encodeURIComponent(message.store_id)}`);
             browserNotice.close();
           };
         }
@@ -82,7 +84,7 @@ export default function AdminChatNotificationsProvider({ stores, children }: { s
       void supabase.removeChannel(channel);
       if (noticeTimerRef.current != null) window.clearTimeout(noticeTimerRef.current);
     };
-  }, [storeNames, stores.length, supabase]);
+  }, [router, storeNames, stores.length, supabase]);
 
   const value = useMemo(() => ({ unreadByStore, markStoreRead, setActiveStore }), [unreadByStore, markStoreRead, setActiveStore]);
 

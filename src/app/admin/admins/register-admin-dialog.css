@@ -1,0 +1,53 @@
+.admin-admins-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.admin-admins-heading .admin-page-title { margin: 0; }
+.admin-add-account-button span { margin-inline-end: 3px; font-size: 16px; line-height: 1; }
+.admin-registration-success { flex-basis: 100%; margin: 0; color: #17643e; font-weight: 650; }
+
+.admin-registration-dialog { position: fixed; inset: 0; width: min(540px, calc(100% - 28px)); max-height: calc(100dvh - 28px); margin: auto; overflow-y: auto; padding: 0; border: 1px solid #dbe5f2; border-radius: 15px; background: #fff; color: #172b46; box-shadow: 0 22px 65px #152c5052; }
+.admin-registration-dialog::backdrop { background: #0c1c37a6; }
+.admin-registration-content { padding: clamp(17px, 4vw, 26px); }
+.admin-registration-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.admin-registration-heading h2 { margin: 0; font-size: 22px; font-weight: 750; }
+.admin-registration-heading p { margin: 5px 0 0; color: #536682; font-size: 13px; }
+.admin-registration-close { display: grid; width: 36px; height: 36px; flex: none; place-items: center; border-radius: 8px; background: #eef4fc; color: #243c61; font-size: 21px; cursor: pointer; }
+.admin-registration-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.admin-registration-fields label { display: grid; gap: 5px; min-width: 0; font-size: 13px; font-weight: 650; }
+.admin-registration-fields :is(input, select) { width: 100%; min-width: 0; min-height: 42px; padding: 8px 10px; border: 1px solid #cbd8eb; border-radius: 8px; background: #fff; font-size: 14px; font-weight: 400; }
+.admin-registration-dialog :is(button, input, select):focus-visible { outline: 2px solid #2167c3; outline-offset: 2px; }
+.admin-registration-error { margin: 14px 0 0; padding: 9px 11px; border-radius: 8px; background: #fdeeee; color: #a02a35; font-size: 13px; }
+.admin-registration-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 9px; margin-top: 20px; }
+.admin-platform-shell .admin-registration-actions .secondary-submit { border: 1px solid #cbd8eb; background: #f4f7fc; color: #324968; }
+.admin-registration-actions button:disabled, .admin-registration-close:disabled { opacity: .65; cursor: wait; }
+
+@media (max-width: 520px) {
+  .admin-registration-fields { grid-template-columns: minmax(0, 1fr); }
+  .admin-registration-fields :is(input, select) { font-size: 16px; }
+}
+
+.admin-registration-dialog { width: min(620px, calc(100% - 28px)); border: 1px solid #e3eaf4; border-radius: 20px; box-shadow: 0 30px 90px #0e274761; }
+.admin-registration-dialog::backdrop { background: #10233daf; backdrop-filter: blur(3px); }
+.admin-registration-content { padding: 0; }
+.admin-registration-heading { align-items: flex-start; gap: 16px; margin: 0; padding: 26px 28px 23px; border-bottom: 1px solid #eaf0f7; background: linear-gradient(120deg, #f7faff, #fff 75%); }
+.admin-registration-heading-main { display: flex; align-items: flex-start; gap: 14px; min-width: 0; }
+.admin-registration-heading-icon { display: grid; flex: 0 0 48px; width: 48px; height: 48px; place-items: center; border: 1px solid #d8e8ff; border-radius: 14px; background: #eaf3ff; color: #2c70ce; }
+.admin-registration-heading-icon svg { width: 25px; height: 25px; }
+.admin-registration-eyebrow { display: block; margin: 1px 0 5px; color: #7290b5; font-size: 10px; font-weight: 800; letter-spacing: .1em; }
+.admin-registration-heading h2 { color: #1d3454; font-size: 22px; letter-spacing: -.03em; }
+.admin-registration-heading p { margin-top: 6px; color: #7b8da4; font-size: 12px; line-height: 1.5; }
+.admin-registration-close { width: 34px; height: 34px; border: 1px solid #e3eaf3; border-radius: 10px; background: #fff; color: #8394aa; font-size: 22px; }
+.admin-registration-close:hover { background: #f0f5fb; color: #365a86; }
+.admin-registration-content form { padding: 23px 28px 25px; }
+.admin-registration-fields { gap: 16px; }
+.admin-registration-section-heading { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; margin-bottom: 1px; }
+.admin-registration-section-heading > span { display: grid; flex: 0 0 30px; width: 30px; height: 30px; place-items: center; border-radius: 9px; background: #edf4ff; color: #497bc0; font-size: 10px; font-weight: 800; }
+.admin-registration-section-heading > div { display: grid; gap: 3px; }.admin-registration-section-heading strong { color: #2b4160; font-size: 13px; }.admin-registration-section-heading small { color: #94a3b5; font-size: 11px; }
+.admin-registration-section-heading.admin-registration-security { margin-top: 3px; padding-top: 19px; border-top: 1px solid #edf1f6; }
+.admin-registration-fields label { gap: 8px; color: #435a77; font-size: 12px; font-weight: 700; }
+.admin-registration-fields :is(input, select) { min-height: 44px; padding: 10px 12px; border: 1px solid #dce5f0; border-radius: 10px; color: #263d5d; font-size: 13px; transition: border-color .15s, box-shadow .15s; }
+.admin-registration-fields :is(input, select)::placeholder { color: #a5b2c2; }.admin-registration-fields :is(input, select):focus { border-color: #75a8ed; box-shadow: 0 0 0 3px #eaf3ff; }
+.admin-registration-full { grid-column: 1 / -1; }
+.admin-registration-help { display: flex; align-items: flex-start; gap: 10px; padding: 12px 13px; border: 1px solid #deebfa; border-radius: 10px; background: #f4f8ff; color: #5e799d; }
+.admin-registration-help > span { display: grid; flex: 0 0 17px; width: 17px; height: 17px; place-items: center; border: 1px solid #84a9d7; border-radius: 50%; color: #5c8bc7; font-size: 11px; font-weight: 700; }.admin-registration-help p { margin: 0; font-size: 11px; line-height: 1.6; }
+.admin-registration-email-note { margin: -5px 0 0; color: #90a0b3; font-size: 11px; line-height: 1.5; }
+.admin-registration-actions { margin-top: 22px; padding-top: 19px; border-top: 1px solid #edf1f6; }.admin-registration-actions button { min-height: 42px; padding-inline: 19px; border-radius: 9px; }
+@media (max-width: 520px) { .admin-registration-heading { padding: 20px 18px; }.admin-registration-heading-icon { flex-basis: 42px; width: 42px; height: 42px; }.admin-registration-content form { padding: 20px 18px; }.admin-registration-fields { gap: 14px; }.admin-registration-fields :is(input, select) { font-size: 16px; }.admin-registration-actions button { flex: 1; } }

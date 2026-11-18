@@ -1,8 +1,10 @@
 "use client";
 
+import "../order-ready-estimate.css";
+
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { isRefundableOrder } from "@/lib/order-refunds";
 import BankTransferQr, { type BankTransferDetails } from "@/app/bank-transfer-qr";
 
 type OrderItem = {
@@ -21,6 +23,7 @@ type TrackedOrder = {
   promotion_code: string | null;
   discount_vnd: number;
   fulfillment: "pickup" | "delivery";
+  estimated_ready_at?: string | null;
   delivery_address: string | null;
   delivery_distance_m: number | null;
   delivery_fee_vnd: number;
@@ -31,6 +34,8 @@ type TrackedOrder = {
   payment_bank_name: string | null;
   payment_account_number: string | null;
   payment_account_name: string | null;
+  refunded_at?: string | null;
+  refund_amount_vnd?: number | null;
   cancellation_request_status: "none" | "pending" | "approved" | "declined";
   cancellation_request_reason: string | null;
   cancellation_requested_at: string | null;
@@ -68,9 +73,12 @@ export default function TrackOrderForm() {
   const [trackedPhone, setTrackedPhone] = useState("");
   const [isSubmittingCancellation, setIsSubmittingCancellation] = useState(false);
   const [cancellationError, setCancellationError] = useState("");
-  const shouldAutoRefresh = Boolean(order && !isClosedOrder(order.status) && (
-    order.status !== "completed" || (order.payment_method === "bank_transfer" && order.payment_status !== "paid")
-  ));
+  const refundStatus = order && order.refunded_at !== undefined && isRefundableOrder(order)
+    ? order.refunded_at ? "refunded" : "pending"
+    : null;
+  const shouldAutoRefresh = Boolean(order && (refundStatus === "pending" || (
+    !isClosedOrder(order.status) && (order.status !== "completed" || (order.payment_method === "bank_transfer" && order.payment_status !== "paid"))
+  )));
   const trackedOrderCode = order?.public_code ?? "";
 
   useEffect(() => {
@@ -92,7 +100,10 @@ export default function TrackOrderForm() {
         setOrder((current) => {
           if (!current || current.public_code !== refreshedOrder.public_code) return current;
           const changed = current.status !== refreshedOrder.status
+            || current.estimated_ready_at !== refreshedOrder.estimated_ready_at
             || current.payment_status !== refreshedOrder.payment_status
+            || current.refunded_at !== refreshedOrder.refunded_at
+            || current.refund_amount_vnd !== refreshedOrder.refund_amount_vnd
             || current.cancellation_request_status !== refreshedOrder.cancellation_request_status
             || current.cancellation_request_reason !== refreshedOrder.cancellation_request_reason
             || current.cancellation_decided_at !== refreshedOrder.cancellation_decided_at
@@ -218,25 +229,27 @@ export default function TrackOrderForm() {
 
   return (
     <div className="tracking-content">
-      <div className="eyebrow"><span>✳</span> ĐƠN HÀNG CỦA BẠN</div>
       <h1>Tra cứu đơn hàng</h1>
       <p className="tracking-intro">Nhập mã đơn và số điện thoại đã dùng khi đặt món.</p>
 
       <form className="tracking-form" onSubmit={findOrder}>
-        <label>Mã đơn<input name="publicCode" autoComplete="off" placeholder="Ví dụ: MO-A1B2C3..." required /></label>
-        <label>Số điện thoại<input name="customerPhone" type="tel" inputMode="tel" autoComplete="tel" pattern="[0-9+() .-]{9,16}" placeholder="Số điện thoại đặt hàng" required /></label>
+        <label>Mã đơn<input name="publicCode" autoComplete="off" autoCapitalize="characters" placeholder="Ví dụ MO-A1B2C3" required /></label>
+        <label>Số điện thoại<input name="customerPhone" type="tel" inputMode="tel" autoComplete="tel" pattern="[0-9+\(\) .\-]{9,16}" placeholder="Số điện thoại đặt hàng" required /></label>
+        <button className="tracking-submit" type="submit" disabled={isSearching}>{isSearching ? "Đang tra cứu…" : "Tra cứu đơn"}<span aria-hidden="true">→</span></button>
         {errorMessage && <p className="order-error" role="alert">{errorMessage}</p>}
-        <button className="primary-button tracking-submit" type="submit" disabled={isSearching}>{isSearching ? "Đang tra cứu..." : "Tra cứu"}<span>→</span></button>
       </form>
 
       {order && (
         <section className="tracked-order" aria-live="polite">
           <header>
-            <div><small>MÃ ĐƠN</small><b>{order.public_code}</b></div>
+            <div><h2>{order.store_name}</h2><span>Mã đơn <b>{order.public_code}</b></span></div>
             <span className={`status-badge status-${order.status}`}>{order.status === "ready" && order.fulfillment === "delivery" ? "Đơn đã sẵn sàng giao" : statusLabels[order.status] ?? order.status}</span>
           </header>
           {shouldAutoRefresh && <p className="tracking-refresh-note"><span aria-hidden="true">●</span> Trạng thái tự cập nhật mỗi 10 giây khi trang đang mở.</p>}
-          <p className="tracked-store">{order.store_name} · {new Date(order.created_at).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</p>
+          <p className="tracked-store">Đặt lúc <time dateTime={order.created_at}>{new Date(order.created_at).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</time></p>
+          {order.fulfillment === "pickup" && order.estimated_ready_at && ["confirmed", "preparing"].includes(order.status) && (
+            <p className="order-modal-note order-ready-estimate">Dự kiến sẵn sàng lúc <strong><time dateTime={order.estimated_ready_at}>{new Date(order.estimated_ready_at).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", day: "numeric", month: "numeric" })}</time></strong></p>
+          )}
           {order.cancellation_request_status === "pending" && <div className="tracked-cancellation is-pending" role="status">
             <b>Đã gửi yêu cầu hủy đơn</b>
             {order.cancellation_request_reason && <span>Lý do: {order.cancellation_request_reason}</span>}
@@ -246,7 +259,6 @@ export default function TrackOrderForm() {
           {order.cancellation_request_status === "approved" && <div className="tracked-cancellation is-approved" role="status">
             <b>Cửa hàng đã chấp nhận yêu cầu hủy</b>
             <span>Đơn hàng đã được đóng.</span>
-            {order.payment_method === "bank_transfer" && <small>Nếu bạn đã chuyển khoản, vui lòng liên hệ cửa hàng để xác nhận việc hoàn tiền. Hệ thống không tự hoàn tiền.</small>}
           </div>}
           {order.cancellation_request_status === "declined" && <div className="tracked-cancellation is-declined" role="status">
             <b>Cửa hàng chưa chấp nhận yêu cầu hủy</b>
@@ -264,6 +276,7 @@ export default function TrackOrderForm() {
               <small>{order.delivery_distance_m == null ? "" : `${(Number(order.delivery_distance_m) / 1000).toFixed(1)} km từ cửa hàng`} · Phí giao {formatPrice(Number(order.delivery_fee_vnd))}</small>
             </div>
           )}
+          <h3 className="tracking-items-title">Món đã đặt</h3>
           <ul>
             {order.items.map((item) => (
               <li className="tracked-item" key={item.order_item_id}>
@@ -285,8 +298,8 @@ export default function TrackOrderForm() {
             <section className="tracked-payment" aria-live="polite">
               <div className="tracked-payment-heading">
                 <div><small>THANH TOÁN</small><b>Chuyển khoản QR</b></div>
-                <span className={order.payment_status === "paid" ? "payment-paid-badge" : "payment-pending-badge"}>
-                  {paymentStatusLabel(order)}
+                <span className={order.payment_status === "paid" && refundStatus !== "pending" ? "payment-paid-badge" : "payment-pending-badge"}>
+                  {refundStatus === "refunded" ? "Đã hoàn tiền" : refundStatus === "pending" ? "Chờ hoàn tiền" : paymentStatusLabel(order)}
                 </span>
               </div>
               {order.payment_status !== "paid" && order.status !== "cancelled" && order.status !== "rejected"
@@ -301,7 +314,11 @@ export default function TrackOrderForm() {
                     reference: order.payment_reference,
                   } satisfies BankTransferDetails} />
                 )}
-              {order.payment_status === "paid" && (isClosedOrder(order.status)
+              {refundStatus === "pending" && <p className="payment-confirmed-note">Cửa hàng đang chờ xử lý hoàn <strong>{formatPrice(order.total_vnd)}</strong> cho bạn.</p>}
+              {refundStatus === "refunded" && order.refunded_at && order.refund_amount_vnd != null && (
+                <p className="payment-confirmed-note">Cửa hàng xác nhận đã hoàn <strong>{formatPrice(order.refund_amount_vnd)}</strong> lúc <time dateTime={order.refunded_at}>{new Date(order.refunded_at).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</time>.</p>
+              )}
+              {!refundStatus && order.payment_status === "paid" && (isClosedOrder(order.status)
                 ? <p className="payment-confirmed-note">Cửa hàng đã nhận tiền nhưng đơn đã đóng. Hãy liên hệ cửa hàng để trao đổi việc hoàn tiền.</p>
                 : <p className="payment-confirmed-note">Cửa hàng đã xác nhận nhận được khoản chuyển cho đơn này.</p>)}
               {isClosedOrder(order.status) && order.payment_status !== "paid" && <p className="payment-confirmed-note">Đơn đã đóng. Vui lòng liên hệ cửa hàng nếu bạn đã chuyển khoản.</p>}
@@ -311,7 +328,6 @@ export default function TrackOrderForm() {
           <div className="tracked-total"><span>Tổng tiền</span><strong>{formatPrice(order.total_vnd)}</strong></div>
         </section>
       )}
-      <Link className="back-home" href="/">← Về trang giới thiệu</Link>
     </div>
   );
 }

@@ -7,11 +7,13 @@ export default function OrderDetailsModal({
   orderCode,
   subtitle,
   variant = "merchant",
+  openOnLoad = false,
   children,
 }: {
   orderCode: string;
   subtitle: string;
   variant?: "admin" | "merchant";
+  openOnLoad?: boolean;
   children: ReactNode;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -21,8 +23,15 @@ export default function OrderDetailsModal({
   const titleId = useId();
 
   useEffect(() => {
+    if (!openOnLoad) return;
+    const frame = window.requestAnimationFrame(() => setIsOpen(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [openOnLoad]);
+
+  useEffect(() => {
     if (!isOpen) return;
 
+    const trigger = triggerRef.current;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     closeButtonRef.current?.focus();
@@ -54,7 +63,7 @@ export default function OrderDetailsModal({
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", onKeyDown);
-      window.requestAnimationFrame(() => triggerRef.current?.focus());
+      window.requestAnimationFrame(() => trigger?.focus());
     };
   }, [isOpen]);
 

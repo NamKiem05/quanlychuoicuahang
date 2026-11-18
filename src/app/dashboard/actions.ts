@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createHash, randomBytes } from "node:crypto";
 import { resolveCname, resolveTxt } from "node:dns/promises";
@@ -10,13 +11,21 @@ import { getBankByCode } from "@viet-qr/core";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSupabaseEnv } from "@/lib/supabase/env";
+import { requireMerchantPremium } from "@/lib/merchant-billing";
+import { requireMerchantAccount } from "@/lib/platform-account";
 import {
+  getStoreBannerUrls,
   isStoreThemePreset,
   isStorefrontLayoutPreset,
   isStorefrontSection,
+  isStorefrontStyle,
   storefrontSectionIds,
 } from "@/lib/store-appearance";
 import { sendOrderStatusNotice, type OrderStatusNotice } from "@/lib/email/order-status";
+import { getMerchantContext } from "./data";
+import { getActiveMembership, activeStoreCookie, requireExpectedStore } from "@/lib/active-store";
+import { cookies } from "next/headers";
+import type { OrderHours } from "@/lib/store-order-hours";
 
 function formText(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -48,6 +57,12 @@ function orderListRedirect(formData: FormData, message: string) {
   if (validStatuses.includes(status)) params.set("filter_status", status);
   const page = formText(formData, "filter_page");
   if (/^[1-9]\d{0,6}$/.test(page) && page !== "1") params.set("page", page);
+  const payment = formText(formData, "filter_payment");
+  if (["cash_on_pickup", "cash_on_delivery", "bank_transfer"].includes(payment)) params.set("payment", payment);
+  for (const field of ["from", "to"] as const) { const value = formText(formData, `filter_${field}`); if (isValidDateInput(value)) params.set(field, value); }
+  for (const field of ["min", "max"] as const) { const value = formText(formData, `filter_${field}`); if (/^\d{1,15}$/.test(value)) params.set(field, value); }
+  const sort = formText(formData, "filter_sort");
+  if (["newest", "oldest", "amount_high", "amount_low"].includes(sort)) params.set("sort", sort);
   return "/dashboard/orders?" + params.toString();
 }
 
@@ -94,23 +109,23 @@ function getOwnedStoreAppearanceAssetPath(url: string | null, storeId: string, k
   return filename.startsWith(`branding-${kind}-`) && /\.(jpg|png|webp)$/i.test(filename) ? path : null;
 }
 
-async function getSessionUser() {
+async function getSessionUser(formData?: FormData) {
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
   const userId = data?.claims?.sub;
 
   if (!userId) redirect("/login");
+  await requireMerchantAccount(supabase);
+  if (formData) {
+    const membership = await getActiveMembership(supabase, userId);
+    if (!membership) redirect("/dashboard");
+    requireExpectedStore(formData, membership.store_id);
+  }
   return { supabase, userId };
 }
 
 async function getManagedStoreId(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
-  const { data: membership } = await supabase
-    .from("store_members")
-    .select("store_id")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const membership = await getActiveMembership(supabase, userId);
 
   if (!membership) redirect("/dashboard");
   return membership.store_id;
@@ -119,11 +134,35 @@ async function getManagedStoreId(supabase: Awaited<ReturnType<typeof createClien
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();
+  (await cookies()).delete(activeStoreCookie);
   redirect("/login");
 }
 
+export async function changeAccountPassword(
+  _previous: { error?: string; success?: boolean },
+  formData: FormData,
+): Promise<{ error?: string; success?: boolean }> {
+  const { supabase } = await getSessionUser();
+  const current = formData.get("current_password");
+  const password = formData.get("new_password");
+  const confirmation = formData.get("confirm_password");
+
+  if (typeof current !== "string" || !current || typeof password !== "string" || password.length < 8) {
+    return { error: "Nhập mật khẩu hiện tại và ít nhất 8 ký tự cho mật khẩu mới." };
+  }
+  if (password !== confirmation) return { error: "Mật khẩu xác nhận chưa khớp." };
+  if (password === current) return { error: "Mật khẩu mới phải khác mật khẩu hiện tại." };
+
+  const { error } = await supabase.auth.updateUser({ password, current_password: current });
+  if (error?.code === "reauthentication_needed") return { error: "Hãy đăng nhập lại rồi thử đổi mật khẩu." };
+  if (error?.code === "invalid_credentials") return { error: "Mật khẩu hiện tại chưa đúng." };
+  if (error?.code === "weak_password") return { error: "Mật khẩu mới chưa đáp ứng yêu cầu bảo mật." };
+  if (error) return { error: "Chưa đổi được mật khẩu. Vui lòng kiểm tra mật khẩu hiện tại và thử lại." };
+  return { success: true };
+}
+
 export async function createStore(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase } = await getSessionUser();
   const name = formText(formData, "name");
   const phone = formText(formData, "phone");
   const address = formText(formData, "address");
@@ -131,7 +170,7 @@ export async function createStore(formData: FormData) {
   const latitudeText = formText(formData, "latitude");
   const longitudeText = formText(formData, "longitude");
 
-  if (!name || !slug || name.length > 120) redirect("/dashboard?message=invalid-store");
+  if (name.length < 2 || name.length > 120 || !slug || slug.length > 80) redirect("/dashboard?message=invalid-store");
   if (Boolean(latitudeText) !== Boolean(longitudeText)) redirect("/dashboard?message=invalid-location");
 
   let location: string | null = null;
@@ -147,42 +186,24 @@ export async function createStore(formData: FormData) {
     location = `SRID=4326;POINT(${longitude} ${latitude})`;
   }
 
-  const { data: store, error: storeError } = await supabase
-    .from("stores")
-    .insert({
-      created_by: userId,
-      name,
-      slug,
-      phone: phone || null,
-      address: address || null,
-      location,
-      status: "draft",
-    })
-    .select("id")
-    .single();
-
-  if (storeError || !store) redirect("/dashboard?message=store-create-failed");
-
-  const { error: membershipError } = await supabase.from("store_members").insert({
-    store_id: store.id,
-    user_id: userId,
-    role: "owner",
+  const { error } = await supabase.rpc("create_store_with_merchant_plan", {
+    store_name: name,
+    store_slug: slug,
+    store_phone: phone || null,
+    store_address: address || null,
+    store_location: location,
   });
-
-  if (membershipError) redirect("/dashboard?message=membership-create-failed");
+  if (error?.message === "active_plan_required") redirect("/merchant-plan");
+  if (error?.message === "reserved_store_slug") redirect("/dashboard?message=invalid-reserved-store-slug");
+  if (error) redirect("/dashboard?message=store-create-failed");
+  revalidatePath("/dashboard");
   redirect("/dashboard?message=store-created");
 }
 
 export async function updateStoreLocation(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
-  const { data: membership } = await supabase
-    .from("store_members")
-    .select("store_id")
-    .eq("user_id", userId)
-    .eq("role", "owner")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const { supabase, userId } = await getSessionUser(formData);
+  const activeMembership = await getActiveMembership(supabase, userId);
+  const membership = activeMembership?.role === "owner" ? activeMembership : null;
 
   if (!membership) redirect("/dashboard/store?message=owner-required");
 
@@ -206,15 +227,9 @@ export async function updateStoreLocation(formData: FormData) {
 }
 
 export async function updateStoreProfile(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
-  const { data: membership } = await supabase
-    .from("store_members")
-    .select("store_id")
-    .eq("user_id", userId)
-    .eq("role", "owner")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const { supabase, userId } = await getSessionUser(formData);
+  const activeMembership = await getActiveMembership(supabase, userId);
+  const membership = activeMembership?.role === "owner" ? activeMembership : null;
 
   if (!membership) redirect("/dashboard/store?message=owner-required");
 
@@ -252,69 +267,85 @@ export async function updateStoreProfile(formData: FormData) {
 }
 
 export async function saveStoreAppearance(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
-  const { data: membership } = await supabase
-    .from("store_members")
-    .select("store_id")
-    .eq("user_id", userId)
-    .eq("role", "owner")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const { supabase, userId } = await getSessionUser(formData);
+  const activeMembership = await getActiveMembership(supabase, userId);
+  const membership = activeMembership?.role === "owner" ? activeMembership : null;
 
   if (!membership) redirect("/dashboard/store?message=owner-required");
+  await requireMerchantPremium(supabase, membership.store_id);
 
   const rawLogoUrl = formText(formData, "logo_url");
   const rawBannerUrl = formText(formData, "banner_url");
+  const slideshowSubmitted = formData.get("banner_slideshow") === "true";
+  const submittedBanners = formData.getAll("banner_urls").map((value) => String(value).trim());
   const theme = formText(formData, "theme_preset");
+  const style = formData.get("storefront_style");
   const layout = formText(formData, "storefront_layout");
   const sectionOrder = formData.getAll("storefront_section_order").map((value) => String(value));
   const hiddenSections = [...new Set(formData.getAll("storefront_hidden_sections").map((value) => String(value)))];
-  const { data: store } = await supabase
+  const [{ data: store }, bannerResult] = await Promise.all([supabase
     .from("stores")
-    .select("id, slug, logo_url, banner_url")
+    .select("id, slug, logo_url, banner_url, updated_at")
     .eq("id", membership.store_id)
-    .maybeSingle();
+    .maybeSingle(),
+    supabase.from("stores").select("banner_urls").eq("id", membership.store_id).maybeSingle(),
+  ]);
   if (!store) redirect("/dashboard/appearance?message=store-appearance-save-failed");
+  const galleryUnavailable = bannerResult.error?.code === "42703" || bannerResult.error?.code === "PGRST204";
+  if (slideshowSubmitted && galleryUnavailable) redirect("/dashboard/appearance?message=store-banner-migration-required");
+  if (bannerResult.error && !galleryUnavailable) redirect("/dashboard/appearance?message=store-appearance-save-failed");
+  if (formData.has("appearance_version") && formText(formData, "appearance_version") !== store.updated_at) {
+    redirect("/dashboard/appearance?message=store-appearance-changed");
+  }
 
   const logoUrl = rawLogoUrl || null;
-  const bannerUrl = rawBannerUrl || null;
+  const previousBanners = getStoreBannerUrls(bannerResult.data?.banner_urls, store.banner_url);
+  const bannerUrls = slideshowSubmitted
+    ? submittedBanners
+    : rawBannerUrl ? [...new Set([rawBannerUrl, ...previousBanners.filter((url) => url !== store.banner_url)])] : [];
+  const bannerUrl = bannerUrls[0] ?? null;
   const validOrder = sectionOrder.length === storefrontSectionIds.length
     && new Set(sectionOrder).size === storefrontSectionIds.length
     && sectionOrder.every(isStorefrontSection)
     && storefrontSectionIds.every((section) => sectionOrder.includes(section));
   const validHiddenSections = hiddenSections.every((section) => isStorefrontSection(section) && section !== "menu");
   const validLogo = rawLogoUrl.length <= 2048 && (!rawLogoUrl || rawLogoUrl === store.logo_url || Boolean(getOwnedStoreAppearanceAssetPath(rawLogoUrl, store.id, "logo")));
-  const validBanner = rawBannerUrl.length <= 2048 && (!rawBannerUrl || rawBannerUrl === store.banner_url || Boolean(getOwnedStoreAppearanceAssetPath(rawBannerUrl, store.id, "banner")));
+  const validBanner = bannerUrls.length <= 3 && new Set(bannerUrls).size === bannerUrls.length
+    && bannerUrls.every((url) => url.length > 0 && url.length <= 2048
+      && (previousBanners.includes(url) || Boolean(getOwnedStoreAppearanceAssetPath(url, store.id, "banner"))));
   if (
-    !validLogo || !validBanner || !isStoreThemePreset(theme) || !isStorefrontLayoutPreset(layout) ||
+    !validLogo || !validBanner || !isStoreThemePreset(theme) || (style !== null && !isStorefrontStyle(style)) || !isStorefrontLayoutPreset(layout) ||
     !validOrder || !validHiddenSections
   ) {
     redirect("/dashboard/appearance?message=invalid-store-appearance");
   }
 
-  const { error } = await supabase
+  const { data: savedStore, error } = await supabase
     .from("stores")
     .update({
       logo_url: logoUrl,
       banner_url: bannerUrl,
+      ...(slideshowSubmitted ? { banner_urls: bannerUrls } : {}),
       theme_preset: theme,
+      ...(style === null ? {} : { storefront_style: style }),
       storefront_layout: layout,
       storefront_section_order: sectionOrder,
       storefront_hidden_sections: hiddenSections,
     })
-    .eq("id", store.id);
+    .eq("id", store.id).eq("updated_at", store.updated_at)
+    .select("id").maybeSingle();
   if (error) redirect("/dashboard/appearance?message=store-appearance-save-failed");
+  if (!savedStore) redirect("/dashboard/appearance?message=store-appearance-changed");
 
   revalidatePath(`/${store.slug}`);
+  revalidatePath(`/store-host/${store.slug}`);
   revalidatePath("/dashboard/appearance");
 
   let cleanupFailed = false;
-  for (const [kind, previousUrl, nextUrl] of [
-    ["logo", store.logo_url, logoUrl],
-    ["banner", store.banner_url, bannerUrl],
-  ] as const) {
-    if (!previousUrl || previousUrl === nextUrl) continue;
+  for (const [kind, previousUrl] of [
+    ...(store.logo_url && store.logo_url !== logoUrl ? [["logo", store.logo_url] as const] : []),
+    ...previousBanners.filter((url) => !bannerUrls.includes(url)).map((url) => ["banner", url] as const),
+  ]) {
     const path = getOwnedStoreAppearanceAssetPath(previousUrl, store.id, kind);
     if (!path) continue;
     const { error: cleanupError } = await supabase.storage.from("product-images").remove([path]);
@@ -327,15 +358,9 @@ export async function saveStoreAppearance(formData: FormData) {
 }
 
 export async function updateStoreOrderAcceptance(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
-  const { data: membership } = await supabase
-    .from("store_members")
-    .select("store_id")
-    .eq("user_id", userId)
-    .eq("role", "owner")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const { supabase, userId } = await getSessionUser(formData);
+  const activeMembership = await getActiveMembership(supabase, userId);
+  const membership = activeMembership?.role === "owner" ? activeMembership : null;
 
   if (!membership) redirect("/dashboard/store?message=owner-required");
 
@@ -345,25 +370,50 @@ export async function updateStoreOrderAcceptance(formData: FormData) {
   }
 
   const acceptsOrders = requestedValue === "true";
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("stores")
     .update({ accepts_orders: acceptsOrders })
-    .eq("id", membership.store_id);
+    .eq("id", membership.store_id)
+    .select("id")
+    .maybeSingle();
 
-  if (error) redirect("/dashboard/store?message=store-order-setting-failed");
+  if (error || !data) redirect("/dashboard/store?message=store-order-setting-failed");
   redirect(acceptsOrders ? "/dashboard/store?message=store-orders-enabled" : "/dashboard/store?message=store-orders-paused");
 }
 
+export async function updateStoreOrderHours(formData: FormData) {
+  const { supabase, membership, store } = await getMerchantContext();
+  if (!store || membership?.role !== "owner") redirect("/dashboard/store?message=owner-required");
+  requireExpectedStore(formData, store.id);
+
+  let hours: OrderHours | null = null;
+  if (formData.has("schedule_enabled")) {
+    hours = [];
+    for (let day = 0; day < 7; day++) {
+      if (!formData.has(`day_${day}`)) {
+        hours.push(null);
+        continue;
+      }
+      const opens = formText(formData, `opens_${day}`);
+      const closes = formText(formData, `closes_${day}`);
+      const timeFormat = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+      if (!timeFormat.test(opens) || !timeFormat.test(closes) || opens === closes) {
+        redirect("/dashboard/store?message=invalid-store-order-hours#order-hours");
+      }
+      const minutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
+      hours.push([minutes(opens), minutes(closes)]);
+    }
+  }
+
+  const { data, error } = await supabase.from("stores").update({ order_hours: hours })
+    .eq("id", store.id).select("id").maybeSingle();
+  redirect(`/dashboard/store?message=${error || !data ? "store-order-hours-failed" : "store-order-hours-updated"}#order-hours`);
+}
+
 export async function updateStorePaymentSettings(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
-  const { data: membership } = await supabase
-    .from("store_members")
-    .select("store_id")
-    .eq("user_id", userId)
-    .eq("role", "owner")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const { supabase, userId } = await getSessionUser(formData);
+  const activeMembership = await getActiveMembership(supabase, userId);
+  const membership = activeMembership?.role === "owner" ? activeMembership : null;
 
   if (!membership) redirect("/dashboard/store?message=owner-required");
 
@@ -405,18 +455,13 @@ export async function updateStorePaymentSettings(formData: FormData) {
   redirect(error ? "/dashboard/store?message=payment-settings-failed" : "/dashboard/store?message=payment-settings-updated");
 }
 
-export async function createSePayWebhookKey() {
+export async function createSePayWebhookKey(expectedStoreId: string) {
   const { supabase, userId } = await getSessionUser();
-  const { data: membership } = await supabase
-    .from("store_members")
-    .select("store_id")
-    .eq("user_id", userId)
-    .eq("role", "owner")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const activeMembership = await getActiveMembership(supabase, userId);
+  const membership = activeMembership?.role === "owner" ? activeMembership : null;
 
   if (!membership) return { ok: false as const, message: "Chỉ chủ cửa hàng mới có thể thiết lập." };
+  if (membership.store_id !== expectedStoreId) return { ok: false as const, message: "Cửa hàng đang làm việc đã thay đổi. Hãy tải lại trang." };
 
   const { data: paymentSettings } = await supabase
     .from("store_payment_methods")
@@ -439,15 +484,9 @@ export async function createSePayWebhookKey() {
 }
 
 export async function updateStoreDeliverySettings(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
-  const { data: membership } = await supabase
-    .from("store_members")
-    .select("store_id")
-    .eq("user_id", userId)
-    .eq("role", "owner")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const { supabase, userId } = await getSessionUser(formData);
+  const activeMembership = await getActiveMembership(supabase, userId);
+  const membership = activeMembership?.role === "owner" ? activeMembership : null;
 
   if (!membership) redirect("/dashboard/store?message=owner-required");
 
@@ -484,20 +523,67 @@ export async function updateStoreDeliverySettings(formData: FormData) {
   redirect(error ? "/dashboard/store?message=delivery-settings-failed" : "/dashboard/store?message=delivery-settings-updated");
 }
 
-export async function createCategory(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+function getCategoryImagePath(url: string | null, storeId: string) {
+  const path = getOwnedProductImagePath(url, storeId);
+  return path && /^category-[0-9a-f-]{36}\.(jpg|png|webp)$/.test(path.split("/")[1]) ? path : null;
+}
+
+export async function saveCategory(
+  categoryId: string | null,
+  previousImage: string | null,
+  _previous: string | null,
+  formData: FormData,
+): Promise<string | null> {
+  const { supabase, userId } = await getSessionUser(formData);
   const storeId = await getManagedStoreId(supabase, userId);
   const name = formText(formData, "name");
   const slug = slugify(name);
+  const imageUrl = formText(formData, "image_url");
+  if (!name || !slug || name.length > 100) return "Hãy nhập tên danh mục hợp lệ.";
+  const changeImage = formData.has("image_url") && (imageUrl || null) !== previousImage;
+  if (changeImage && imageUrl && !getCategoryImagePath(imageUrl, storeId)) return "Hãy tải ảnh danh mục từ thiết bị của bạn.";
+  const fields = { name, slug, ...(changeImage ? { image_url: imageUrl || null } : {}) };
+  let update = categoryId
+    ? supabase.from("categories").update(fields).eq("store_id", storeId).eq("id", categoryId)
+    : null;
+  if (update && changeImage) {
+    update = previousImage === null ? update.is("image_url", null) : update.eq("image_url", previousImage);
+  }
+  const { data, error } = update
+    ? await update.select("id").maybeSingle()
+    : await supabase.from("categories").insert({ store_id: storeId, ...fields }).select("id").single();
+  if (error?.code === "23505") return "Tên danh mục này đã được dùng. Hãy chọn tên khác.";
+  if (error || !data) return "Chưa lưu được danh mục. Vui lòng tải lại trang và thử lại.";
 
-  if (!name || !slug || name.length > 100) redirect("/dashboard/menu?message=invalid-category");
-  const { error } = await supabase.from("categories").insert({ store_id: storeId, name, slug });
-  redirect(error ? "/dashboard/menu?message=category-create-failed" : "/dashboard/menu?message=category-created");
+  const cleanupFailed = categoryId && changeImage && getCategoryImagePath(previousImage, storeId)
+    ? await removeOwnedProductImage(supabase, previousImage, storeId)
+    : false;
+  const message = cleanupFailed ? "category-image-cleanup-failed" : categoryId ? "category-updated" : "category-created";
+  revalidatePath("/dashboard/menu");
+  redirect(`/dashboard/menu?message=${message}`);
+}
+
+export async function deleteCategory(categoryId: string, _previous: string | null, formData: FormData): Promise<string | null> {
+  const { supabase, userId } = await getSessionUser(formData);
+  const storeId = await getManagedStoreId(supabase, userId);
+  const { data, error } = await supabase.from("categories").delete()
+    .eq("store_id", storeId).eq("id", categoryId).select().maybeSingle();
+
+  if (error?.code === "23503") return "Danh mục vẫn còn món. Hãy chuyển các món sang danh mục khác hoặc chọn Chưa phân loại trước khi xóa.";
+  if (error || !data) return "Chưa xóa được danh mục. Vui lòng tải lại trang và thử lại.";
+
+  const imageUrl = typeof data.image_url === "string" ? data.image_url : null;
+  const cleanupFailed = getCategoryImagePath(imageUrl, storeId)
+    ? await removeOwnedProductImage(supabase, imageUrl, storeId)
+    : false;
+  revalidatePath("/dashboard/menu");
+  redirect(cleanupFailed ? "/dashboard/menu?message=category-delete-image-cleanup-failed" : "/dashboard/menu?message=category-deleted");
 }
 
 export async function createPromotion(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase, userId } = await getSessionUser(formData);
   const storeId = await getManagedStoreId(supabase, userId);
+  await requireMerchantPremium(supabase, storeId);
   const code = formText(formData, "code").toUpperCase();
   const discountType = formText(formData, "discount_type");
   const discountValue = Number(formText(formData, "discount_value"));
@@ -547,8 +633,9 @@ export async function createPromotion(formData: FormData) {
 }
 
 export async function updatePromotionActive(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase, userId } = await getSessionUser(formData);
   const storeId = await getManagedStoreId(supabase, userId);
+  await requireMerchantPremium(supabase, storeId);
   const promotionId = formText(formData, "promotion_id");
   const nextActive = formText(formData, "next_active");
 
@@ -570,7 +657,7 @@ export async function updatePromotionActive(formData: FormData) {
 }
 
 export async function createProduct(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase, userId } = await getSessionUser(formData);
   const storeId = await getManagedStoreId(supabase, userId);
   const name = formText(formData, "name");
   const priceVnd = Number(formText(formData, "price_vnd"));
@@ -579,9 +666,11 @@ export async function createProduct(formData: FormData) {
   const description = formText(formData, "description");
   const stockText = formText(formData, "stock_quantity");
   const stockQuantity = stockText === "" ? null : Number(stockText);
+  const lowStockThreshold = formData.has("low_stock_threshold") ? Number(formText(formData, "low_stock_threshold") || "5") : null;
   const slug = slugify(name);
 
-  if (!name || !slug || name.length > 160 || description.length > 2000 || !Number.isSafeInteger(priceVnd) || priceVnd < 0 || (stockQuantity !== null && (!Number.isSafeInteger(stockQuantity) || stockQuantity < 0 || stockQuantity > 2147483647))) {
+  if (!name || !slug || name.length > 160 || description.length > 2000 || !Number.isSafeInteger(priceVnd) || priceVnd < 0 || (stockQuantity !== null && (!Number.isSafeInteger(stockQuantity) || stockQuantity < 0 || stockQuantity > 2147483647)) ||
+      (lowStockThreshold !== null && (!Number.isInteger(lowStockThreshold) || lowStockThreshold < 0 || lowStockThreshold > 2147483647))) {
     await removeOwnedProductImage(supabase, imageUrl, storeId);
     redirect("/dashboard/menu?message=invalid-product");
   }
@@ -598,6 +687,7 @@ export async function createProduct(formData: FormData) {
     description,
     price_vnd: priceVnd,
     stock_quantity: stockQuantity,
+    ...(lowStockThreshold === null ? {} : { low_stock_threshold: lowStockThreshold }),
     image_url: imageUrl || null,
     status: "active",
   });
@@ -609,7 +699,7 @@ export async function createProduct(formData: FormData) {
 }
 
 export async function updateProduct(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase, userId } = await getSessionUser(formData);
   const storeId = await getManagedStoreId(supabase, userId);
   const productId = formText(formData, "product_id");
   const name = formText(formData, "name");
@@ -619,6 +709,7 @@ export async function updateProduct(formData: FormData) {
   const description = formText(formData, "description");
   const stockText = formText(formData, "stock_quantity");
   const stockQuantity = stockText === "" ? null : Number(stockText);
+  const lowStockThreshold = formData.has("low_stock_threshold") ? Number(formText(formData, "low_stock_threshold") || "5") : null;
   const status = formText(formData, "status");
   const slug = slugify(name);
 
@@ -626,6 +717,7 @@ export async function updateProduct(formData: FormData) {
     !productId || !name || !slug || name.length > 160 ||
     !Number.isSafeInteger(priceVnd) || priceVnd < 0 || description.length > 2000 ||
     (stockQuantity !== null && (!Number.isSafeInteger(stockQuantity) || stockQuantity < 0 || stockQuantity > 2147483647)) ||
+    (lowStockThreshold !== null && (!Number.isInteger(lowStockThreshold) || lowStockThreshold < 0 || lowStockThreshold > 2147483647)) ||
     !["active", "draft", "archived"].includes(status)
   ) {
     redirect("/dashboard/menu?message=invalid-product-update");
@@ -651,6 +743,7 @@ export async function updateProduct(formData: FormData) {
       description,
       price_vnd: priceVnd,
       stock_quantity: stockQuantity,
+      ...(lowStockThreshold === null ? {} : { low_stock_threshold: lowStockThreshold }),
       image_url: imageUrl || null,
       status,
     })
@@ -670,7 +763,7 @@ export async function updateProduct(formData: FormData) {
 }
 
 export async function saveProductOptionGroup(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase, userId } = await getSessionUser(formData);
   await getManagedStoreId(supabase, userId);
   const productId = formText(formData, "product_id");
   const groupId = formText(formData, "group_id");
@@ -714,7 +807,7 @@ export async function saveProductOptionGroup(formData: FormData) {
 }
 
 export async function deleteProductOptionGroup(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase, userId } = await getSessionUser(formData);
   await getManagedStoreId(supabase, userId);
   const groupId = formText(formData, "group_id");
   if (!/^[0-9a-f-]{36}$/i.test(groupId)) redirect("/dashboard/menu?message=product-options-delete-failed");
@@ -726,7 +819,7 @@ export async function deleteProductOptionGroup(formData: FormData) {
 }
 
 export async function setProductVisibility(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase, userId } = await getSessionUser(formData);
   const storeId = await getManagedStoreId(supabase, userId);
   const productId = formText(formData, "product_id");
   const status = formText(formData, "status");
@@ -748,7 +841,7 @@ export async function setProductVisibility(formData: FormData) {
 }
 
 export async function deleteProduct(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase, userId } = await getSessionUser(formData);
   const storeId = await getManagedStoreId(supabase, userId);
   const productId = formText(formData, "product_id");
 
@@ -778,63 +871,84 @@ export async function deleteProduct(formData: FormData) {
 }
 
 export async function updateOrderStatus(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase, userId } = await getSessionUser(formData);
   const storeId = await getManagedStoreId(supabase, userId);
   const orderId = formText(formData, "order_id");
-  const status = formText(formData, "status");
-  const allowedStatuses = ["confirmed", "preparing", "ready", "out_for_delivery", "completed", "cancelled", "rejected"];
+  const requestedStatus = formText(formData, "status");
+  const allowedStatuses = ["confirmed", "preparing", "ready", "out_for_delivery", "completed", "cancelled", "rejected"] as const satisfies readonly OrderStatusNotice[];
+  const status = allowedStatuses.find((value) => value === requestedStatus);
 
-  if (!orderId || !allowedStatuses.includes(status)) redirect(orderListRedirect(formData, "invalid-order-status"));
+  if (!orderId || !status) redirect(orderListRedirect(formData, "invalid-order-status"));
 
-  const { error } = await supabase.rpc("store_update_order_status", {
-    requested_store_id: storeId,
-    requested_order_id: orderId,
-    requested_status: status,
-  });
+  const estimate = formText(formData, "preparation_minutes");
+  if (estimate && (status !== "confirmed" || !["15", "30", "45"].includes(estimate))) {
+    redirect(orderListRedirect(formData, "invalid-order-ready-estimate"));
+  }
+  const orderParams = { requested_store_id: storeId, requested_order_id: orderId };
+  const { error } = estimate
+    ? await supabase.rpc("store_set_pickup_ready_estimate", { ...orderParams, requested_minutes: Number(estimate), confirm_order: true })
+    : await supabase.rpc("store_update_order_status", { ...orderParams, requested_status: status });
 
   if (error) redirect(orderListRedirect(formData, "order-status-failed"));
 
-  const notificationStatuses: OrderStatusNotice[] = [
-    "confirmed",
-    "preparing",
-    "rejected",
-    "ready",
-    "out_for_delivery",
-    "completed",
-    "cancelled",
-  ];
-  if (notificationStatuses.includes(status as OrderStatusNotice)) {
-    const { data: order, error: orderError } = await supabase
-      .from("orders")
-      .select("public_code, customer_name, customer_email, total_vnd, fulfillment")
-      .eq("id", orderId)
-      .eq("store_id", storeId)
-      .maybeSingle();
-    const { data: store, error: storeError } = await supabase
-      .from("stores")
-      .select("name")
-      .eq("id", storeId)
-      .maybeSingle();
-
-    const emailSent = !orderError && !storeError && order && store
-      ? await sendOrderStatusNotice({
-          customerEmail: order.customer_email,
-          customerName: order.customer_name,
-          storeName: store.name,
-          publicCode: order.public_code,
-          totalVnd: Number(order.total_vnd),
-          fulfillment: order.fulfillment,
-        }, status as OrderStatusNotice)
-      : false;
-
-    redirect(orderListRedirect(formData, emailSent ? "order-status-updated" : "order-status-updated-email-failed"));
-  }
+  after(async () => {
+    const [{ data: order, error: orderError }, { data: store, error: storeError }] = await Promise.all([
+      supabase.from("orders").select("public_code, customer_name, customer_email, total_vnd, fulfillment")
+        .eq("id", orderId).eq("store_id", storeId).maybeSingle(),
+      supabase.from("stores").select("name").eq("id", storeId).maybeSingle(),
+    ]);
+    if (orderError || storeError || !order || !store) {
+      console.warn("Could not load details for order status email", { orderId, status, code: orderError?.code ?? storeError?.code });
+      return;
+    }
+    if (!order.customer_email) return;
+    const sent = await sendOrderStatusNotice({
+      customerEmail: order.customer_email,
+      customerName: order.customer_name,
+      storeName: store.name,
+      publicCode: order.public_code,
+      totalVnd: Number(order.total_vnd),
+      fulfillment: order.fulfillment,
+    }, status);
+    if (!sent) console.warn("Could not send order status email", { orderId, status });
+  });
 
   redirect(orderListRedirect(formData, "order-status-updated"));
 }
 
+export async function updateOrderReadyEstimate(formData: FormData) {
+  const { supabase, userId } = await getSessionUser(formData);
+  const storeId = await getManagedStoreId(supabase, userId);
+  const orderId = formText(formData, "order_id");
+  const minutes = formText(formData, "preparation_minutes");
+  if (!orderId || !["15", "30", "45"].includes(minutes)) {
+    redirect(orderListRedirect(formData, "invalid-order-ready-estimate"));
+  }
+  const { error } = await supabase.rpc("store_set_pickup_ready_estimate", {
+    requested_store_id: storeId, requested_order_id: orderId,
+    requested_minutes: Number(minutes), confirm_order: false,
+  });
+  redirect(orderListRedirect(formData, error ? "order-ready-estimate-failed" : "order-ready-estimate-updated"));
+}
+
+export async function sendCurrentOrderNotice(formData: FormData) {
+  const { supabase, userId } = await getSessionUser(formData);
+  const storeId = await getManagedStoreId(supabase, userId);
+  const orderId = formText(formData, "order_id");
+  if (!/^[0-9a-f-]{36}$/i.test(orderId)) redirect(orderListRedirect(formData, "order-notice-failed"));
+  const [{ data: order }, { data: store }] = await Promise.all([
+    supabase.from("orders").select("public_code, customer_name, customer_email, total_vnd, fulfillment, status").eq("id", orderId).eq("store_id", storeId).maybeSingle(),
+    supabase.from("stores").select("name").eq("id", storeId).maybeSingle(),
+  ]);
+  const allowed = ["confirmed", "preparing", "ready", "out_for_delivery", "completed", "cancelled", "rejected"] as const satisfies readonly OrderStatusNotice[];
+  const notice = allowed.find((status) => status === order?.status);
+  if (!order || !store || !notice || !order.customer_email) redirect(orderListRedirect(formData, "order-notice-failed"));
+  const sent = await sendOrderStatusNotice({ customerEmail: order.customer_email, customerName: order.customer_name, storeName: store.name, publicCode: order.public_code, totalVnd: Number(order.total_vnd), fulfillment: order.fulfillment }, notice);
+  redirect(orderListRedirect(formData, sent ? "order-notice-sent" : "order-notice-failed"));
+}
+
 export async function decideOrderCancellation(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase, userId } = await getSessionUser(formData);
   const storeId = await getManagedStoreId(supabase, userId);
   const orderId = formText(formData, "order_id");
   const decision = formText(formData, "decision");
@@ -877,8 +991,24 @@ export async function decideOrderCancellation(formData: FormData) {
   redirect(orderListRedirect(formData, emailSent ? "cancellation-request-declined" : "cancellation-request-declined-email-failed"));
 }
 
+export async function recordOrderRefund(formData: FormData) {
+  const { supabase, userId } = await getSessionUser(formData);
+  const storeId = await getManagedStoreId(supabase, userId);
+  const orderId = formText(formData, "order_id");
+  if (!orderId) redirect(orderListRedirect(formData, "order-refund-failed"));
+
+  const { error } = await supabase.rpc("store_record_order_refund", {
+    requested_store_id: storeId,
+    requested_order_id: orderId,
+  });
+  if (error) redirect(orderListRedirect(formData, "order-refund-failed"));
+
+  revalidatePath("/dashboard/orders");
+  redirect(orderListRedirect(formData, "order-refund-recorded"));
+}
+
 export async function confirmBankTransfer(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase, userId } = await getSessionUser(formData);
   const storeId = await getManagedStoreId(supabase, userId);
   const orderId = formText(formData, "order_id");
   if (!orderId) redirect(orderListRedirect(formData, "payment-confirmation-failed"));
@@ -917,7 +1047,7 @@ export async function confirmBankTransfer(formData: FormData) {
 }
 
 export async function updateReviewStatus(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase, userId } = await getSessionUser(formData);
   const storeId = await getManagedStoreId(supabase, userId);
   const reviewId = formText(formData, "review_id");
   const status = formText(formData, "status");
@@ -949,21 +1079,16 @@ function normalizeHostname(value: string) {
 }
 
 async function getOwnedStore(supabase: Awaited<ReturnType<typeof createClient>>, userId: string) {
-  const { data: membership } = await supabase
-    .from("store_members")
-    .select("store_id")
-    .eq("user_id", userId)
-    .eq("role", "owner")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const activeMembership = await getActiveMembership(supabase, userId);
+  const membership = activeMembership?.role === "owner" ? activeMembership : null;
   if (!membership) redirect("/dashboard/domains?message=owner-required");
   return membership.store_id;
 }
 
 export async function addStoreCustomDomain(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase, userId } = await getSessionUser(formData);
   const storeId = await getOwnedStore(supabase, userId);
+  await requireMerchantPremium(supabase, storeId);
   const hostname = normalizeHostname(formText(formData, "hostname"));
   const platformDomain = normalizeHostname(process.env.NEXT_PUBLIC_PLATFORM_DOMAIN ?? "");
   if (!hostname || (platformDomain && (hostname === platformDomain || hostname.endsWith(`.${platformDomain}`)))) {
@@ -982,8 +1107,9 @@ export async function addStoreCustomDomain(formData: FormData) {
 }
 
 export async function verifyStoreCustomDomain(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase, userId } = await getSessionUser(formData);
   const storeId = await getOwnedStore(supabase, userId);
+  await requireMerchantPremium(supabase, storeId);
   const domainId = formText(formData, "domain_id");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(domainId)) redirect("/dashboard/domains?message=invalid-domain");
 
@@ -1033,7 +1159,7 @@ export async function verifyStoreCustomDomain(formData: FormData) {
 }
 
 export async function removeStoreCustomDomain(formData: FormData) {
-  const { supabase, userId } = await getSessionUser();
+  const { supabase, userId } = await getSessionUser(formData);
   const storeId = await getOwnedStore(supabase, userId);
   const domainId = formText(formData, "domain_id");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(domainId)) redirect("/dashboard/domains?message=invalid-domain");

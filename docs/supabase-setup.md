@@ -11,7 +11,7 @@ Tại thư mục gốc `food-platform`, sao chép `.env.example` thành `.env.lo
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
-NEXT_PUBLIC_MAP_TILE_URL=https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}.png
+NEXT_PUBLIC_MAP_TILE_URL=https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}.png
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 NEXT_PUBLIC_PLATFORM_DOMAIN=foodgo.example.com
 STORE_DOMAIN_CNAME_TARGET=cname.hosting-provider.example
@@ -62,6 +62,30 @@ Migration 021 tạo luồng chat giữa admin nền tảng và thành viên củ
 
 Migration 022 tạo khóa webhook riêng cho từng cửa hàng và endpoint nhận giao dịch SePay. Sau khi nhận webhook có API Key hợp lệ, hệ thống tự đánh dấu kết nối đã bật, rồi chỉ xác nhận thanh toán nếu giao dịch là tiền vào và mã đơn, tài khoản nhận, số tiền khớp; mã giao dịch duy nhất ngăn xử lý lặp. Chủ cửa hàng vẫn cần tự xác nhận nhận đơn; webhook chỉ xác nhận tiền. Để dùng thật, mỗi cửa hàng cần liên kết tài khoản ngân hàng với SePay và cấu hình webhook trỏ tới URL HTTPS công khai của ứng dụng. Thay đổi tài khoản QR hoặc tắt QR sẽ xóa khóa webhook hiện tại; cửa hàng cần tạo và cấu hình khóa mới khi bật lại.
 
+Để bật theo dõi hoàn tiền, chạy `supabase/migrations/202611160011_order_refunds.sql` sau các migration trước đó, gồm `202611160002_platform_admin_read_only_orders.sql` và `202611160009_pickup_ready_estimate.sql`. Đơn QR đã thanh toán chuyển sang **Chờ hoàn tiền** khi bị hủy hoặc từ chối. Sau khi hoàn toàn bộ tiền qua ngân hàng, chủ cửa hàng mở chi tiết đơn để bấm **Đánh dấu đã hoàn tiền**. Khách có thể xem số tiền và thời điểm ghi nhận ở trang **Tra cứu đơn**.
+
+Để thêm ảnh danh mục, chạy `supabase/migrations/202611160012_category_images.sql`. Trong **Dashboard → Thực đơn → Danh mục**, chọn ảnh JPG, PNG hoặc WebP tối đa 5 MB khi tạo danh mục. Ảnh dùng kho `product-images` theo quyền cửa hàng từ migration 005.
+
+## Thanh toán gói dịch vụ cho chủ cửa hàng
+
+1. Chạy `supabase/migrations/202611160013_merchant_plans.sql` sau các migration hiện có. Đặt `MERCHANT_PLAN_BANK_CODE`, `MERCHANT_PLAN_ACCOUNT_NUMBER`, `MERCHANT_PLAN_ACCOUNT_NAME`, `MERCHANT_PLAN_SEPAY_API_KEY` và `SUPABASE_SERVICE_ROLE_KEY` trên máy chủ ứng dụng. Khóa SePay dành riêng cho thanh toán gói phải dài ít nhất 32 ký tự và không có khoảng trắng.
+2. Trong SePay Webhooks, chọn tài khoản nhận tiền của nền tảng, giao dịch tiền vào và payload JSON chuẩn. Dùng xác thực API Key với khóa ở bước 1 và URL HTTPS `/api/webhooks/sepay-merchant-plan`. Endpoint này tách riêng khỏi webhook xác nhận đơn của cửa hàng. Cho phép gửi giao dịch có nội dung bắt đầu bằng mã `GGP`; hệ thống tự đọc mã từ nội dung nếu SePay chưa cấu hình nhận diện mã.
+3. Thử bằng SePay Test mode trên môi trường kiểm thử với khóa webhook và cơ sở dữ liệu riêng. Đăng ký tài khoản mới, mở QR, mô phỏng khoản tiền đúng và kiểm tra gói tự chuyển sang đang hoạt động. Gửi lại cùng giao dịch và xác nhận hạn sử dụng chỉ tăng một tháng. Thử sai số tiền và kiểm tra gói vẫn chờ thanh toán.
+
+Chủ quán chọn một trong hai gói theo tháng sau khi xác nhận email. Mỗi khoản chuyển đúng mã và số tiền cấp một tháng, tính từ lúc kích hoạt hoặc nối tiếp thời hạn còn lại khi gia hạn. Chủ quán gia hạn thủ công qua QR trong mục **Gói dịch vụ**. Gian hàng mới có thể công khai ngay sau khi tạo và mặc định tắt nhận đơn để chủ quán thiết lập thực đơn trước. Khi hết hạn, cửa hàng tạm dừng nhận đơn mới và khóa các thao tác quản lý tính năng Nâng cao cho đến khi gia hạn. Website vẫn hiển thị và chủ quán vẫn xử lý được đơn đã nhận. Gian hàng tạo trước migration giữ quyền truy cập hiện tại.
+
+[Tích hợp webhook SePay](https://developer.sepay.vn/en/sepay-webhooks/tich-hop-webhook) · [Mô phỏng giao dịch trong SePay Test mode](https://developer.sepay.vn/vi/tien-ich-khac/test-mode/mo-phong-giao-dich)
+
+Chạy thêm `supabase/migrations/202611160014_merchant_plan_upgrades.sql` để bật **Nâng cấp ngay** từ Cơ bản lên Nâng cao. Số tiền được làm tròn lên đến đồng, dựa trên chênh lệch 50.000₫ và thời gian Cơ bản đã trả tiền còn lại. SePay xác nhận đúng số tiền trên QR và giữ nguyên hạn cũ. Với giao dịch đến sau khi mã hết hạn, webhook ghi nhận mã giao dịch và trả `upgrade_paid_after_expiry` để đối soát, còn gói không được kích hoạt.
+
+Sau đó chạy `supabase/migrations/202611160015_cancel_merchant_plan_payment.sql` để bật **Hủy yêu cầu thanh toán**. Nếu có tiền vào theo mã đã hủy, **Admin → Thanh toán gói → Cần đối soát** hiển thị số tiền thực nhận và mã SePay để xử lý. Giao dịch này không kích hoạt, gia hạn hay nâng cấp gói.
+
+## Banner chuyển slide
+
+Chạy `supabase/migrations/202611180001_store_banner_slideshow.sql` sau các migration trước đó. Chủ quán mở **Dashboard → Giao diện → Ảnh thương hiệu**, tải tối đa 3 ảnh rồi bấm **Lưu giao diện**. Mỗi ảnh nhận JPG, PNG hoặc WebP tối đa 5 MB. Ảnh bìa hiện có được giữ làm banner đầu tiên.
+
+Banner tự chuyển mỗi 5 giây, có nút tiến/lùi, chấm chọn ảnh và nút dừng. Tự chuyển tạm ngưng khi rê chuột, chuyển tab hoặc dùng bàn phím trong banner. Thiết bị bật giảm chuyển động sẽ chỉ chuyển khi khách bấm hoặc vuốt. Trang xem trước dùng cùng slideshow với website cửa hàng.
+
 ## 4. Chạy ứng dụng
 
 Sau khi lưu `.env.local`, khởi động lại `npm run dev`. Mã khởi tạo client đã có tại `src/lib/supabase/`. Nếu chưa điền biến môi trường, proxy sẽ bỏ qua việc làm mới phiên và phần giao diện mẫu vẫn mở được.
@@ -72,15 +96,22 @@ Nếu bật xác nhận email trong Supabase Auth, thêm `http://localhost:3000/
 
 ## 6. Cấp quyền admin đầu tiên
 
-Đăng ký tài khoản của bạn tại `/login` trước. Sau đó, trong SQL Editor, chạy câu lệnh dưới đây với email đã đăng ký để cấp quyền quản trị nền tảng cho tài khoản đó. Thay địa chỉ mẫu bằng email của bạn:
+Tạo một người dùng mới dành riêng cho quản trị trong **Supabase → Authentication → Users**. Dùng email riêng với tài khoản cửa hàng. Trong SQL Editor, thay địa chỉ mẫu bằng email quản trị vừa tạo và chạy:
 
 ```sql
+begin;
+update auth.users
+set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"account_kind":"platform_admin"}'::jsonb
+where email = lower('you@example.com');
 insert into public.platform_admins (user_id)
 select id from auth.users where email = lower('you@example.com')
 on conflict (user_id) do nothing;
+commit;
 ```
 
-Vào `/admin` để xem tổng quan, `/admin/stores` để duyệt cửa hàng, tạm dừng hoặc khóa gian hàng. Không cấp quyền admin cho tài khoản khác nếu bạn không tin cậy người đó.
+Chạy `supabase/migrations/202611160016_separate_platform_admin_accounts.sql` sau các migration thanh toán để thực thi phân tách. Migration giữ quyền của admin đã có. Nếu admin cũ từng sở hữu gian hàng, gian hàng vẫn tồn tại nhưng cần bàn giao quyền chủ cửa hàng cho một tài khoản cửa hàng riêng để sử dụng dashboard. Tạo admin tiếp theo trong **Admin → Quản trị viên**.
+
+Vào `/admin` để xem tổng quan, `/admin/stores` để duyệt cửa hàng, tạm dừng hoặc khóa gian hàng.
 
 ## 7. Gửi email xác nhận mã đơn
 
@@ -108,6 +139,22 @@ Khi đặt hàng, khách nhập email cùng số điện thoại. Sau khi đơn 
 - Bản đồ dùng tile URL trong `NEXT_PUBLIC_MAP_TILE_URL`. Stadia Maps cho phép phát triển trên `localhost` không cần API key; khi chạy domain thật, hãy cấu hình domain hoặc API key theo tài liệu của nhà cung cấp.
 
 ## Ghi chú
+
+- Quản lý nhân viên cửa hàng cần migration `202611180027_store_staff_invitations.sql` và `202611180029_remove_owner_create_staff.sql` sau các migration trước đó. Chủ cửa hàng tạo lời mời và hệ thống gửi email qua SMTP ứng dụng; cần cấu hình SMTP và `NEXT_PUBLIC_APP_URL` là địa chỉ HTTPS công khai. Riêng khi chạy môi trường phát triển có thể dùng `http://localhost:3000` để thử trên cùng máy; liên kết này không hoạt động trên thiết bị khác. Người nhận đăng nhập bằng tài khoản có email đã xác minh và tự chấp nhận tại `/staff-invitations`; lời mời hết hạn sau 7 ngày. Xác minh email tài khoản vẫn phụ thuộc SMTP của Supabase Auth. Nếu gửi email mời thất bại, lời mời vẫn được lưu và có thể gửi lại trong danh sách. Chỉ vai trò `staff` hiện có được cấp; chưa có phân quyền chi tiết hoặc kiểm tra giới hạn nhân viên theo gói. Migration thu hồi quyền ghi trực tiếp `store_members` của `authenticated`; cần thử các tích hợp đang ghi trực tiếp bảng này trước khi triển khai.
+
+- Box vận hành cần migration `202611180026_platform_operations.sql` sau migration thông báo. Chế độ bảo trì áp dụng tại proxy KingWeb và không chặn Supabase trực tiếp; Admin, đăng nhập và webhook được miễn để tránh khóa quản trị hoặc bỏ sót thanh toán. Nếu không đọc được cấu hình thì proxy tiếp tục cho truy cập. Công tắc đăng ký được kiểm tra bằng trigger trên `auth.users`, ngoại trừ tài khoản do Admin tạo; trước khi triển khai cần thử cả đăng ký và tạo nhân viên trên môi trường thử nghiệm. Giới hạn ký tự chỉ áp dụng cho thông báo nền tảng mới.
+
+- Box lưu trữ và sao lưu cần migration `202611180025_platform_storage_settings.sql` và service role để đọc thông tin bucket. Lịch, thời hạn lưu giữ và ghi chú là kế hoạch do admin lưu, không kích hoạt sao lưu tự động hoặc tự xóa tệp. Dung lượng sử dụng/hạn mức dự án và trạng thái sao lưu tự động chưa được đồng bộ; kết quả sao lưu trong ứng dụng do admin ghi nhận.
+
+- Box cấu hình thông báo cần migration `202611180024_platform_notification_settings.sql`. Công tắc chỉ kiểm soát tạo thông báo nền tảng mới trong ứng dụng; mẫu bảo trì và thanh toán được chọn thủ công ở trang Quản lý thông báo. Các thông báo đã gửi vẫn giữ nguyên. Email nền tảng và thông báo tự động đăng ký, bảo trì, thanh toán chưa được tích hợp.
+
+- Cấu hình bảo mật nhân viên cần migration `202611180023_platform_security_settings.sql`. Độ dài mật khẩu chỉ áp dụng khi tạo nhân viên trong Admin; không thay thế chính sách mật khẩu toàn dự án trên Supabase Auth. Thời hạn phiên, giới hạn Auth, xác minh email và MFA cần thiết lập riêng; ứng dụng chưa có luồng xác minh MFA hay danh sách IP cho Admin.
+
+- Cấu hình thanh toán gói dịch vụ cần migration `202611180022_platform_payment_settings.sql`. Bật/tắt chỉ ảnh hưởng việc tạo yêu cầu mới; webhook vẫn đối soát yêu cầu đã tạo. Thông tin ngân hàng và khóa webhook SePay vẫn được cấu hình bằng biến môi trường phía máy chủ; mục kiểm tra chỉ xác nhận cấu hình nội bộ, không xác minh kết nối hoặc giao dịch SePay.
+
+- Cấu hình SMTP trong Admin cần migration `202611180021_platform_email_settings.sql`, biến `SUPABASE_SERVICE_ROLE_KEY` và khóa `SMTP_SETTINGS_ENCRYPTION_KEY` trên máy chủ. Tạo khóa một lần bằng `node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))"`, lưu bí mật trong môi trường triển khai và giữ nguyên khi khởi động lại; thay hoặc mất khóa sẽ khiến mật khẩu SMTP đã lưu không giải mã được. Không đưa khóa vào mã nguồn. Cấu hình này dùng cho email đơn hàng; xác minh và đặt lại mật khẩu của Supabase Auth phải cấu hình SMTP riêng trong Supabase. SMTP hỗ trợ máy chủ công khai qua cổng 465, 587 hoặc 2525 với TLS.
+
+- Tổng quan chủ cửa hàng cần migration `202611180017_merchant_overview.sql` (sau các migration trước đó). Doanh thu tính theo thanh toán đã xác nhận; khách hàng được phân biệt theo số điện thoại trong đơn, và khách mới tính theo đơn đầu tiên trong tháng. Xếp hạng doanh thu sản phẩm chưa phân bổ giảm giá, phí giao hàng hoặc hoàn tiền. Các hoạt động gần đây hiện là đơn hàng gần đây.
 
 - Người dùng mới trong Supabase Auth tự có một hàng trong `profiles`.
 - Tạo tài khoản chủ cửa hàng chưa tự cấp quyền admin nền tảng.

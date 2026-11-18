@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { requirePlatformAdminAccess } from "@/lib/platform-account";
 import Toast from "@/app/toast";
 import { toastVariantForMessage } from "@/lib/toast";
 import RemoveAdminDomainForm from "./remove-domain-form";
+import DomainCheck from "./domain-check";
+import "./admin-domains.css";
 
 export const metadata: Metadata = { title: "Tên miền cửa hàng | Quản trị" };
 
@@ -30,10 +33,11 @@ export default async function AdminDomainsPage({ searchParams }: PageProps<"/adm
   const filterStatus = typeof query.status === "string" && statuses.includes(query.status) ? query.status : "";
 
   const supabase = await createClient();
+  await requirePlatformAdminAccess(supabase);
   const [{ data: domains, error }, { data: stores, error: storesError }] = await Promise.all([
     supabase
       .from("store_domains")
-      .select("id, store_id, hostname, domain_type, verification_status, created_at")
+      .select("id, store_id, hostname, domain_type, verification_status, verification_token, created_at")
       .order("created_at", { ascending: false }),
     supabase.from("stores").select("id, name, slug, status"),
   ]);
@@ -47,6 +51,8 @@ export default async function AdminDomainsPage({ searchParams }: PageProps<"/adm
     return matchesStatus && (!search || searchText.includes(search));
   });
   const message = typeof query.message === "string" ? messages[query.message] : undefined;
+  const platformDomain = (process.env.NEXT_PUBLIC_PLATFORM_DOMAIN ?? "").trim().replace(/^https?:\/\//i, "").split(/[/?#]/)[0].replace(/:\d+$/, "").replace(/\.+$/, "").toLowerCase();
+  const cnameTarget = (process.env.STORE_DOMAIN_CNAME_TARGET ?? "").trim().replace(/^https?:\/\//i, "").split(/[/?#]/)[0].replace(/:\d+$/, "").replace(/\.+$/, "").toLowerCase();
   const counts = {
     total: allDomains.length,
     pending: allDomains.filter((domain) => domain.verification_status === "pending").length,
@@ -60,11 +66,17 @@ export default async function AdminDomainsPage({ searchParams }: PageProps<"/adm
       <p className="dashboard-intro">Theo dõi tên miền các cửa hàng, trạng thái xác minh và gỡ hostname không còn phù hợp.</p>
       <Toast message={message} variant={typeof query.message === "string" ? toastVariantForMessage(query.message) : "success"} />
 
+      <div className="admin-domain-notice"><strong>Trạng thái tên miền</strong><p>Xác minh DNS không đồng nghĩa với website hoặc SSL đã hoạt động. Trạng thái kết nối, chứng chỉ SSL và ngày hết hạn đăng ký tên miền chưa được theo dõi tự động.</p></div>
+
       <div className="admin-domain-stats">
-        <article><small>TỔNG TÊN MIỀN</small><b>{counts.total}</b></article>
-        <article><small>CHỜ XÁC MINH</small><b>{counts.pending}</b></article>
-        <article><small>ĐÃ XÁC MINH</small><b>{counts.verified}</b></article>
+        <article><small>TỔNG TÊN MIỀN ĐÃ THÊM</small><b>{error ? "—" : counts.total}</b></article>
+        <article><small>CHỜ XÁC MINH</small><b>{error ? "—" : counts.pending}</b></article>
+        <article><small>ĐÃ XÁC MINH</small><b>{error ? "—" : counts.verified}</b></article>
       </div>
+
+      <details className="admin-domain-defaults"><summary>Địa chỉ mặc định của cửa hàng <span>{storesError ? "Không tải được" : `${(stores ?? []).length} cửa hàng`}</span></summary><p>Khách có thể dùng đường dẫn của nền tảng. Tên miền phụ chỉ được sử dụng sau khi cấu hình wildcard DNS và hosting.</p>
+        {storesError ? <p role="alert">Không tải được danh sách cửa hàng.</p> : <div className="admin-domain-default-grid">{(stores ?? []).map((store) => <div key={store.id}><Link href={`/admin/stores/${store.id}`}>{store.name}</Link><code>/{store.slug}</code><small>{platformDomain ? `${store.slug}.${platformDomain} · Chưa kiểm tra kết nối` : "Chưa cấu hình tên miền phụ"}</small></div>)}</div>}
+      </details>
 
       <form className="dashboard-form merchant-order-filters admin-order-filters" method="get">
         <label>Tìm tên miền hoặc cửa hàng<input type="search" name="q" maxLength={100} defaultValue={typeof query.q === "string" ? query.q : ""} placeholder="Hostname, tên quán hoặc slug" /></label>
@@ -97,9 +109,13 @@ export default async function AdminDomainsPage({ searchParams }: PageProps<"/adm
                 <div className="admin-store-meta">
                   <span>{domain.domain_type === "custom" ? "Tên miền riêng" : "Tên miền phụ"}</span>
                   <span>Đã thêm {new Date(domain.created_at).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</span>
+                  <span>Kết nối: chưa kiểm tra</span><span>SSL: chưa kiểm tra</span><span>Hết hạn tên miền: chưa quản lý</span>
                 </div>
+                {domain.verification_status !== "verified" && <p className="admin-domain-warning">Cảnh báo: tên miền chưa được xác minh DNS.</p>}
+                {domain.domain_type === "custom" && <details className="admin-domain-records"><summary>Hướng dẫn bản ghi DNS</summary><dl><div><dt>TXT · Tên</dt><dd>_foodgo-verification.{domain.hostname}</dd></div><div><dt>TXT · Giá trị</dt><dd>foodgo-verify={domain.verification_token}</dd></div><div><dt>CNAME · Tên</dt><dd>{domain.hostname}</dd></div><div><dt>CNAME · Đích</dt><dd>{cnameTarget || "Chưa cấu hình STORE_DOMAIN_CNAME_TARGET"}</dd></div></dl></details>}
               </div>
               <div className="admin-store-actions">
+                {domain.domain_type === "custom" && <DomainCheck domainId={domain.id} />}
                 <RemoveAdminDomainForm domainId={domain.id} hostname={domain.hostname} />
               </div>
             </article>

@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
+import { defaultPlatformSettings, getPlatformSettings } from "@/lib/platform-settings";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: "Gần Đây | Website bán hàng riêng cho quán ăn",
-  description: "Nền tảng giúp quán ăn tạo website riêng, quản lý thực đơn và đơn hàng. Khách đặt món qua link do cửa hàng chia sẻ.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  await connection();
+  const { settings } = await getPlatformSettings();
+  const current = settings ?? defaultPlatformSettings;
+  return { title: current.platform_name, description: current.description || defaultPlatformSettings.description, icons: { icon: current.favicon_url || "/default-favicon.ico" } };
+}
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

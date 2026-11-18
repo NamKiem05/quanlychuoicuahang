@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
+import { requirePlatformAdminAccess } from "@/lib/platform-account";
 import { updateAdminReviewStatus } from "../actions";
 import Toast from "@/app/toast";
 import { toastVariantForMessage } from "@/lib/toast";
@@ -21,6 +22,7 @@ const statusLabels: Record<string, string> = {
 export default async function AdminReviewsPage({ searchParams }: PageProps<"/admin/reviews">) {
   const query = await searchParams;
   const supabase = await createClient();
+  await requirePlatformAdminAccess(supabase);
   const [
     { data: reviews, error },
     { data: stores },

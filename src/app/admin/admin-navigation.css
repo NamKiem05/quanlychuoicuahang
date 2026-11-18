@@ -1,0 +1,37 @@
+@media (min-width: 761px) {
+  .admin-platform-shell > .admin-sidebar .admin-platform-sidebar-nav {
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #60718a transparent;
+  }
+  .admin-platform-shell .sidebar-desktop-links { display: flex; flex-direction: column; gap: 12px; }
+  .admin-platform-shell .admin-sidebar-group + .admin-sidebar-group { border-top: 1px solid #ffffff1c; padding-top: 12px; }
+  .admin-platform-shell .admin-sidebar-group h2 { margin: 0; padding: 3px 10px 7px; color: #91a2ba; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .admin-platform-shell .admin-sidebar-group .admin-sidebar-link { min-height: 36px; padding: 8px 10px; }
+}
+.admin-platform-shell .admin-sidebar-unavailable { opacity: .55; cursor: default; }
+.admin-platform-shell .admin-sidebar-unavailable:hover { background: transparent; color: #c5d0df; }
+.admin-platform-shell .admin-sidebar-unavailable small { margin-left: auto; font-size: 8px; white-space: nowrap; }
+.admin-platform-shell .admin-sidebar-submenu > summary { list-style: none; cursor: pointer; user-select: none; }
+.admin-platform-shell .admin-sidebar-submenu > summary::-webkit-details-marker { display: none; }
+.admin-platform-shell .admin-sidebar-submenu > summary:focus-visible { outline: 2px solid #88b9ff; outline-offset: -2px; }
+.admin-platform-shell .admin-sidebar-submenu-arrow { margin-left: auto; color: #93a8c3; font-size: 15px; transition: transform .15s; }
+.admin-platform-shell .admin-sidebar-submenu[open] .admin-sidebar-submenu-arrow { transform: rotate(180deg); }
+.admin-platform-shell .admin-sidebar-submenu-items { display: grid; gap: 2px; margin: 2px 0 5px 18px; padding-left: 11px; border-left: 1px solid #ffffff30; }
+.admin-platform-shell .admin-sidebar-submenu-link { display: flex; align-items: center; justify-content: space-between; gap: 7px; padding: 8px 6px; border-radius: 6px; color: #c5d0df; font-size: 10px; line-height: 1.4; }
+.admin-platform-shell .admin-sidebar-submenu-link.is-unavailable { color: #92a3ba; }
+.admin-platform-shell .admin-sidebar-submenu-link small { flex: none; color: #8192aa; font-size: 8px; }
+.admin-platform-shell a.admin-sidebar-submenu-link:hover { background: #ffffff12; color: #fff; }
+.admin-platform-shell a.admin-sidebar-submenu-link.active { background: #ffffff1c; color: #fff; font-weight: 700; }
+@media (max-width: 760px) {
+  .admin-platform-shell .sidebar-mobile-settings-menu { max-height: min(70vh, 550px); overflow-y: auto; }
+  .admin-platform-shell .sidebar-mobile-settings-menu .admin-sidebar-unavailable { color: #53647c; }
+  .admin-platform-shell .sidebar-mobile-settings-menu .admin-sidebar-unavailable:hover { color: #53647c; }
+  .admin-platform-shell .sidebar-mobile-settings-menu .admin-sidebar-submenu > summary { min-height: 42px; flex-direction: row; justify-content: flex-start; gap: 10px; padding: 9px 11px; color: #53647c; font-size: 11px; }
+  .admin-platform-shell .sidebar-mobile-settings-menu .admin-sidebar-submenu > summary .admin-sidebar-icon { color: #53647c; }
+  .admin-platform-shell .sidebar-mobile-settings-menu .admin-sidebar-submenu-items { border-left-color: #dce5ef; }
+  .admin-platform-shell .sidebar-mobile-settings-menu a.admin-sidebar-submenu-link { color: #53647c; }
+  .admin-platform-shell .sidebar-mobile-settings-menu a.admin-sidebar-submenu-link.active { background: #e8f0ff; color: #175fce; }
+  .admin-platform-shell .sidebar-mobile-settings-menu .admin-sidebar-submenu-link.is-unavailable { color: #8b99aa; }
+}

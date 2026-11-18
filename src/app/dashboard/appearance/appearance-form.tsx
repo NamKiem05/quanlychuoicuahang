@@ -2,17 +2,23 @@
 
 import Image from "next/image";
 import { useState } from "react";
+import { useFormStatus } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { getSupabaseEnv } from "@/lib/supabase/env";
 import {
   layoutPresets,
   storeThemes,
+  storefrontStyles,
   storefrontSections,
   type StoreThemePreset,
   type StorefrontLayoutPreset,
   type StorefrontSection,
+  type StorefrontStyle,
 } from "@/lib/store-appearance";
 import { saveStoreAppearance } from "../actions";
+import "@/app/storefront-styles.css";
+import StoreBannerSlideshow from "@/app/store-banner-slideshow";
+import "./banner-images.css";
 
 const bucketName = "product-images";
 const maxFileSize = 5 * 1024 * 1024;
@@ -86,7 +92,7 @@ function AppearanceImageField({
   label,
   hint,
   value,
-  initialValue,
+  savedUrls,
   onChange,
   onUploadingChange,
 }: {
@@ -95,11 +101,11 @@ function AppearanceImageField({
   label: string;
   hint: string;
   value: string;
-  initialValue: string;
+  savedUrls: string[];
   onChange: (url: string) => void;
   onUploadingChange: (uploading: boolean) => void;
 }) {
-  const [previewUrl, setPreviewUrl] = useState(value);
+  const { pending } = useFormStatus();
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState(false);
@@ -135,9 +141,8 @@ function AppearanceImageField({
       if (uploadError) throw uploadError;
 
       const { data } = supabase.storage.from(bucketName).getPublicUrl(objectPath);
-      if (value && value !== initialValue) removeTemporaryImage(value, storeId, kind);
+      if (value && !savedUrls.includes(value)) removeTemporaryImage(value, storeId, kind);
       onChange(data.publicUrl);
-      setPreviewUrl(data.publicUrl);
       setMessage("Đã tải ảnh lên. Bấm Lưu giao diện để áp dụng.");
     } catch (uploadError) {
       console.error("Store appearance image upload failed", uploadError);
@@ -150,9 +155,8 @@ function AppearanceImageField({
   }
 
   function clearImage() {
-    if (value && value !== initialValue) removeTemporaryImage(value, storeId, kind);
+    if (value && !savedUrls.includes(value)) removeTemporaryImage(value, storeId, kind);
     onChange("");
-    setPreviewUrl("");
     setMessage("Ảnh sẽ được gỡ khỏi website sau khi bạn lưu giao diện.");
     setError(false);
   }
@@ -161,17 +165,18 @@ function AppearanceImageField({
     <div className={`appearance-image-field appearance-image-${kind}`}>
       <div className="appearance-image-copy"><b>{label}</b><span>{hint}</span></div>
       <div className="appearance-image-preview">
-        {previewUrl
-          ? <Image src={previewUrl} alt={`Xem trước ${label.toLocaleLowerCase("vi-VN")}`} width={kind === "logo" ? 180 : 640} height={kind === "logo" ? 180 : 240} unoptimized />
+        {value
+          ? <Image src={value} alt={`Xem trước ${label.toLocaleLowerCase("vi-VN")}`} width={kind === "logo" ? 180 : 640} height={kind === "logo" ? 180 : 240} unoptimized />
           : <span>{kind === "logo" ? "Logo cửa hàng" : "Ảnh bìa cửa hàng"}</span>}
       </div>
       <div className="appearance-image-actions">
         <label className="secondary-submit appearance-file-button">
-          {uploading ? "Đang tải ảnh..." : previewUrl ? "Chọn ảnh khác" : "Tải ảnh lên"}
+          {uploading ? "Đang tải ảnh..." : value ? "Chọn ảnh khác" : "Tải ảnh lên"}
           <input
             type="file"
             accept="image/jpeg,image/png,image/webp"
-            disabled={uploading}
+            aria-label={`Tải ảnh cho ${label.toLocaleLowerCase("vi-VN")}`}
+            disabled={uploading || pending}
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (file) void upload(file);
@@ -179,7 +184,7 @@ function AppearanceImageField({
             }}
           />
         </label>
-        {previewUrl && <button className="product-image-remove" type="button" disabled={uploading} onClick={clearImage}>Gỡ ảnh</button>}
+        {value && <button className="product-image-remove" type="button" aria-label={`Gỡ ${label.toLocaleLowerCase("vi-VN")}`} disabled={uploading || pending} onClick={clearImage}>Gỡ ảnh</button>}
       </div>
       {message && <span className={`product-image-status${error ? " is-error" : ""}`} role="status">{message}</span>}
     </div>
@@ -190,9 +195,13 @@ export default function AppearanceForm({
   storeId,
   storeName,
   storeSlug,
+  initialVersion,
   initialLogoUrl,
-  initialBannerUrl,
+  initialBannerUrls,
+  bannerLimit,
   initialTheme,
+  initialStyle,
+  sampleProduct,
   initialLayout,
   initialSectionOrder,
   initialHiddenSections,
@@ -200,22 +209,27 @@ export default function AppearanceForm({
   storeId: string;
   storeName: string;
   storeSlug: string;
+  initialVersion: string;
   initialLogoUrl: string | null;
-  initialBannerUrl: string | null;
+  initialBannerUrls: string[];
+  bannerLimit: 1 | 3;
   initialTheme: StoreThemePreset;
+  initialStyle: StorefrontStyle | null;
+  sampleProduct: { name: string; price_vnd: number; image_url: string | null } | null;
   initialLayout: StorefrontLayoutPreset;
   initialSectionOrder: StorefrontSection[];
   initialHiddenSections: StorefrontSection[];
 }) {
   const [logoUrl, setLogoUrl] = useState(initialLogoUrl ?? "");
-  const [bannerUrl, setBannerUrl] = useState(initialBannerUrl ?? "");
+  const [bannerUrls, setBannerUrls] = useState(() => Array.from({ length: bannerLimit }, (_, index) => initialBannerUrls[index] ?? ""));
   const [theme, setTheme] = useState<StoreThemePreset>(initialTheme);
+  const [style, setStyle] = useState(initialStyle);
   const [layout, setLayout] = useState<StorefrontLayoutPreset>(initialLayout);
   const [sectionOrder, setSectionOrder] = useState<StorefrontSection[]>(initialSectionOrder);
   const [hiddenSections, setHiddenSections] = useState<StorefrontSection[]>(initialHiddenSections);
-  const [uploadingImages, setUploadingImages] = useState({ logo: false, banner: false });
-  const uploading = uploadingImages.logo || uploadingImages.banner;
-  const onUploadingChange = (kind: "logo" | "banner", value: boolean) => {
+  const [uploadingImages, setUploadingImages] = useState<Record<string, boolean>>({});
+  const uploading = Object.values(uploadingImages).some(Boolean);
+  const onUploadingChange = (kind: string, value: boolean) => {
     setUploadingImages((current) => ({ ...current, [kind]: value }));
   };
 
@@ -238,10 +252,16 @@ export default function AppearanceForm({
   }
 
   return (
-    <form className="appearance-layout" action={saveStoreAppearance}>
+    <form className="appearance-layout" action={saveStoreAppearance} onSubmit={(event) => {
+      if (uploading) event.preventDefault();
+    }}>
       <input type="hidden" name="logo_url" value={logoUrl} />
-      <input type="hidden" name="banner_url" value={bannerUrl} />
+      <input type="hidden" name="appearance_version" value={initialVersion} />
+      <input type="hidden" name="banner_url" value={bannerUrls.find(Boolean) ?? ""} />
+      {bannerLimit === 3 && <input type="hidden" name="banner_slideshow" value="true" />}
+      {bannerLimit === 3 && bannerUrls.filter(Boolean).map((url, index) => <input type="hidden" name="banner_urls" key={index} value={url} />)}
       <input type="hidden" name="theme_preset" value={theme} />
+      {style && <input type="hidden" name="storefront_style" value={style} />}
       <input type="hidden" name="storefront_layout" value={layout} />
       {sectionOrder.map((section) => <input key={section} type="hidden" name="storefront_section_order" value={section} />)}
       {hiddenSections.map((section) => <input key={section} type="hidden" name="storefront_hidden_sections" value={section} />)}
@@ -249,12 +269,47 @@ export default function AppearanceForm({
       <div className="appearance-controls">
         <section className="dashboard-card appearance-card">
           <div className="dashboard-card-heading">
+            <div><h2>Mẫu giao diện</h2></div>
+            <p>Chọn cách trình bày trang bán hàng. Xem trước rồi bấm Lưu giao diện.</p>
+          </div>
+          {style === null ? <p className="dashboard-help">Mẫu giao diện sẽ xuất hiện sau khi cập nhật cơ sở dữ liệu.</p> : (
+            <fieldset className="appearance-style-options" aria-label="Mẫu giao diện">
+              {storefrontStyles.map((option) => (
+                <label key={option.id} className="appearance-style-option">
+                  <input type="radio" name="style_choice" checked={style === option.id} onChange={() => setStyle(option.id)} />
+                  <span><strong>{option.label}</strong><small>{option.description}</small></span>
+                </label>
+              ))}
+            </fieldset>
+          )}
+        </section>
+        <section className="dashboard-card appearance-card">
+          <div className="dashboard-card-heading">
             <div><span className="card-number">01</span><h2>Ảnh thương hiệu</h2></div>
             <p>Logo và ảnh bìa sẽ xuất hiện trên trang bán hàng của bạn.</p>
           </div>
           <div className="appearance-images">
-            <AppearanceImageField storeId={storeId} kind="logo" label="Logo cửa hàng" hint="Ảnh vuông sẽ hiển thị cạnh tên quán." value={logoUrl} initialValue={initialLogoUrl ?? ""} onChange={setLogoUrl} onUploadingChange={(value) => onUploadingChange("logo", value)} />
-            <AppearanceImageField storeId={storeId} kind="banner" label="Ảnh bìa" hint="Ảnh ngang phù hợp để làm hình chính trên trang." value={bannerUrl} initialValue={initialBannerUrl ?? ""} onChange={setBannerUrl} onUploadingChange={(value) => onUploadingChange("banner", value)} />
+            <AppearanceImageField storeId={storeId} kind="logo" label="Logo cửa hàng" hint="Ảnh vuông sẽ hiển thị cạnh tên quán." value={logoUrl} savedUrls={initialLogoUrl ? [initialLogoUrl] : []} onChange={setLogoUrl} onUploadingChange={(value) => onUploadingChange("logo", value)} />
+            <div className="appearance-banner-images" id="banner-settings">
+              <div className="appearance-image-copy">
+                <b>Banner cửa hàng · {bannerUrls.filter(Boolean).length}/{bannerLimit} ảnh</b>
+                <span>Ảnh ngang 1600 × 480 px. Nhiều ảnh sẽ tự chuyển slide mỗi 5 giây.</span>
+              </div>
+              {bannerLimit === 1 && <p className="dashboard-help" role="status">Chạy migration 202611180001_store_banner_slideshow.sql để tải tối đa 3 ảnh.</p>}
+              {bannerUrls.map((url, index) => (
+                <AppearanceImageField
+                  key={index}
+                  storeId={storeId}
+                  kind="banner"
+                  label={`Banner ${index + 1}`}
+                  hint={index === 0 ? "Ảnh đầu tiên trong slideshow." : "Ảnh tiếp theo trong slideshow."}
+                  value={url}
+                  savedUrls={initialBannerUrls}
+                  onChange={(nextUrl) => setBannerUrls((current) => current.map((item, position) => position === index ? nextUrl : item))}
+                  onUploadingChange={(value) => onUploadingChange(`banner-${index}`, value)}
+                />
+              ))}
+            </div>
           </div>
           <p className="dashboard-help">Dùng ảnh JPG, PNG hoặc WebP, tối đa 5 MB mỗi ảnh. Ảnh được lưu trong kho của cửa hàng.</p>
         </section>
@@ -326,15 +381,13 @@ export default function AppearanceForm({
           </div>
           <p className="dashboard-help">Thực đơn luôn hiển thị để khách có thể chọn món và đặt hàng.</p>
         </section>
-        <button className="primary-button dashboard-submit appearance-save-button" type="submit" disabled={uploading}>
-          {uploading ? "Đang tải ảnh..." : "Lưu giao diện"}<span>→</span>
-        </button>
+        <AppearanceSaveButton uploading={uploading} />
         {uploading && <p className="dashboard-help appearance-upload-warning">Đợi ảnh tải xong trước khi lưu thay đổi.</p>}
       </div>
 
       <aside className="appearance-preview-panel" aria-label="Xem trước giao diện cửa hàng">
         <div className="appearance-preview-heading"><span>BẢN XEM TRƯỚC</span><small>Thay đổi hiển thị sau khi lưu</small></div>
-        <div className="appearance-preview" data-theme={theme} data-layout={layout}>
+        <div className="appearance-preview" data-theme={theme} data-layout={layout} data-style={style ?? "original"}>
           <div className="appearance-preview-content">
             <div className="appearance-preview-brand">
               <span className="appearance-preview-logo">
@@ -345,24 +398,36 @@ export default function AppearanceForm({
             <div className="appearance-preview-flow">
               {sectionOrder.filter((section) => !hiddenSections.includes(section)).map((section) => (
                 <div className={`appearance-preview-section appearance-preview-section-${section}`} key={section}>
-                  {section === "hero" && <>
-                    <div className="appearance-preview-banner" style={bannerUrl ? { backgroundImage: `linear-gradient(0deg,#18241655,#18241600 65%), url("${bannerUrl}")` } : undefined}>{!bannerUrl && <span>Ảnh bìa cửa hàng</span>}</div>
-                    <b>Ngon như cơm nhà, ấm lòng mỗi bữa.</b><small>Phần giới thiệu cửa hàng</small>
-                  </>}
+                    {section === "hero" && (
+                      <div className="appearance-preview-banner">
+                        {bannerUrls.some(Boolean) ? <StoreBannerSlideshow key={bannerUrls.join("|")} urls={bannerUrls.filter(Boolean)} storeName={storeName} /> : <span>Ảnh bìa cửa hàng</span>}
+                      </div>
+                    )}
                   {section === "menu" && <>
                     <div className="appearance-preview-actions"><b>Thực đơn nổi bật</b><span>Xem món →</span></div>
-                    <div className="appearance-preview-product"><span>🍲</span><div><b>Món ngon của quán</b><small>Từ gian hàng {storeName}</small></div><strong>45.000₫</strong></div>
+                    {sampleProduct ? <div className="appearance-preview-product">
+                      <span>{sampleProduct.image_url ? <Image src={sampleProduct.image_url} alt="" width={42} height={42} unoptimized /> : "🍲"}</span>
+                      <div><b>{sampleProduct.name}</b></div><strong>{Number(sampleProduct.price_vnd).toLocaleString("vi-VN")}₫</strong>
+                    </div> : <small>Chưa có món đang bán để xem trước.</small>}
                   </>}
                   {section === "reviews" && <><b>Đánh giá món ăn</b><small>★★★★★ · Khách hàng của quán</small></>}
                   {section === "story" && <><b>Giới thiệu cửa hàng</b><small>{storeName} · Món ngon địa phương, đặt trực tiếp từ quán.</small></>}
                 </div>
               ))}
             </div>
-            {!hiddenSections.includes("hero") && <button className="appearance-preview-button" type="button">Đặt món ngay <span>→</span></button>}
           </div>
         </div>
         <a className="appearance-open-store" href={`/${storeSlug}`} target="_blank" rel="noreferrer">Mở website cửa hàng ↗</a>
       </aside>
     </form>
+  );
+}
+
+function AppearanceSaveButton({ uploading }: { uploading: boolean }) {
+  const { pending } = useFormStatus();
+  return (
+    <button className="primary-button dashboard-submit appearance-save-button" type="submit" disabled={uploading || pending}>
+      {uploading ? "Đang tải ảnh..." : pending ? "Đang lưu..." : "Lưu giao diện"}<span aria-hidden="true">→</span>
+    </button>
   );
 }

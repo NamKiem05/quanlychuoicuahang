@@ -14,16 +14,19 @@ type Product = {
   image_url: string | null;
   description: string;
   stock_quantity: number | null;
+  low_stock_threshold: number;
 };
 
 export default function ProductForm({
   storeId,
   categories,
   product,
+  showLowStockThreshold,
 }: {
   storeId: string;
   categories: CategoryOption[];
   product?: Product;
+  showLowStockThreshold: boolean;
 }) {
   const [isUploading, setIsUploading] = useState(false);
 
@@ -49,7 +52,10 @@ export default function ProductForm({
             <label>Danh mục<select name="category_id" defaultValue=""><option value="">Chưa phân loại</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
           </>
         )}
-        <label>Số lượng tồn kho <span className="field-hint">Để trống nếu không giới hạn số lượng</span><input name="stock_quantity" type="number" min="0" max="2147483647" step="1" defaultValue={product?.stock_quantity ?? ""} placeholder="Không giới hạn" /></label>
+        <div className="form-row">
+          <label>Số lượng tồn kho <span className="field-hint">Để trống nếu không giới hạn số lượng</span><input name="stock_quantity" type="number" min="0" max="2147483647" step="1" defaultValue={product?.stock_quantity ?? ""} placeholder="Không giới hạn" /></label>
+          {showLowStockThreshold && <label>Ngưỡng cảnh báo tồn kho <span className="field-hint">Cảnh báo khi tồn kho bằng hoặc thấp hơn ngưỡng</span><input name="low_stock_threshold" type="number" min="0" max="2147483647" step="1" defaultValue={product?.low_stock_threshold ?? 5} required /></label>}
+        </div>
         <div className="product-image-form-field"><span>Ảnh món ăn <span className="field-hint">JPG, PNG hoặc WebP · tối đa 5 MB</span></span><ProductImageField storeId={storeId} initialUrl={product?.image_url ?? ""} onUploadingChange={setIsUploading} /></div>
         <label>Mô tả<textarea name="description" rows={2} maxLength={2000} defaultValue={product?.description ?? ""} placeholder="Mô tả ngắn về món ăn" /></label>
         {product ? (

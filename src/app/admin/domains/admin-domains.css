@@ -1,0 +1,22 @@
+.admin-domain-notice { margin: 18px 0; padding: 14px 17px; border: 1px solid #dce8f7; border-radius: 10px; background: #f1f7ff; color: #526f91; font-size: 11px; }
+.admin-domain-notice p { margin: 5px 0 0; line-height: 1.6; }
+.admin-domain-defaults { margin: 18px 0; padding: 17px; border: 1px solid #e0e8f2; border-radius: 11px; background: #fff; }
+.admin-domain-defaults summary { color: #29415f; font-size: 13px; font-weight: 700; cursor: pointer; }
+.admin-domain-defaults summary span { margin-left: 10px; color: #8a9bae; font-size: 10px; font-weight: 500; }
+.admin-domain-defaults > p { color: #8799ae; font-size: 11px; line-height: 1.5; }
+.admin-domain-default-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 8px; max-height: 320px; overflow: auto; }
+.admin-domain-default-grid > div { display: grid; gap: 5px; padding: 11px; border-radius: 8px; background: #f6f9fd; font-size: 11px; }
+.admin-domain-default-grid a { color: #2669c5; font-weight: 700; }
+.admin-domain-default-grid small { color: #8495a9; overflow-wrap: anywhere; }
+.admin-domain-warning { margin: 8px 0 0; color: #bb7625; font-size: 11px; }
+.admin-domain-records { margin-top: 10px; color: #376ba9; font-size: 11px; }
+.admin-domain-records summary { cursor: pointer; }
+.admin-domain-records dl { display: grid; gap: 7px; padding: 12px; border-radius: 8px; background: #f4f8fd; }
+.admin-domain-records dl > div { display: grid; grid-template-columns: 110px minmax(0,1fr); gap: 8px; }
+.admin-domain-records dt { color: #8798aa; }
+.admin-domain-records dd { margin: 0; color: #344e6b; overflow-wrap: anywhere; }
+.admin-domain-check { max-width: 270px; }
+.admin-domain-check-result { display: grid; gap: 5px; margin-top: 8px; padding: 10px; border-radius: 8px; background: #fff7eb; color: #a46a23; font-size: 10px; line-height: 1.5; }
+.admin-domain-check-result.is-success { background: #e9f8ef; color: #197d4c; }
+.admin-domain-check-result p { margin: 0; }
+@media (max-width: 600px) { .admin-domain-records dl > div { grid-template-columns: 1fr; } }

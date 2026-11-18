@@ -1,10 +1,17 @@
+import "./platform-home.css";
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
+import { connection } from "next/server";
+import { defaultPlatformSettings, getPlatformSettings } from "@/lib/platform-settings";
+import { formatPlanAmount, merchantPlans } from "@/lib/merchant-plans";
 
-export const metadata: Metadata = {
-  title: "Gần Đây | Website bán hàng riêng cho quán ăn",
-  description: "Tạo website riêng cho cửa hàng đồ ăn, quản lý thực đơn và đơn hàng. Khách mua hàng qua link của cửa hàng.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  await connection();
+  const { settings } = await getPlatformSettings();
+  const current = settings ?? defaultPlatformSettings;
+  return { title: `${current.platform_name} | Nền tảng bán hàng`, description: current.description || defaultPlatformSettings.description };
+}
 
 const features = [
   {
@@ -25,23 +32,27 @@ const features = [
 ];
 
 const steps = [
-  { number: "01", title: "Tạo tài khoản", description: "Đăng ký tài khoản chủ cửa hàng và nhập thông tin cơ bản của quán." },
+  { number: "01", title: "Đăng ký và chọn gói", description: "Tạo tài khoản chủ cửa hàng, xác nhận email và thanh toán gói dịch vụ." },
   { number: "02", title: "Dựng gian hàng", description: "Thêm thực đơn, hình ảnh, phương thức thanh toán và cách giao nhận." },
   { number: "03", title: "Chia sẻ link", description: "Gửi đường link cửa hàng cho khách để họ xem món và đặt hàng trực tiếp." },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  await connection();
+  const { settings } = await getPlatformSettings();
+  const current = settings ?? defaultPlatformSettings;
   return (
     <div id="platform-home">
       <header className="header">
-        <div className="container headerInner">
-          <Link className="brand" href="/" aria-label="Gần Đây - trang giới thiệu">
-            <span className="brandMark">G</span>
-            <span className="brandCopy"><b>gần đây<span>.</span></b><small>Nền tảng cho quán ăn</small></span>
+        <div className="platform-container headerInner">
+          <Link className="brand" href="/" aria-label={`${current.platform_name} - trang giới thiệu`}>
+            {current.logo_url && <Image src={current.logo_url} width={180} height={72} alt={current.platform_name} unoptimized style={{ objectFit: "contain" }} />}
+            
           </Link>
           <nav className="nav" aria-label="Điều hướng chính">
             <a href="#loi-ich">Lợi ích</a>
             <a href="#cach-hoat-dong">Cách hoạt động</a>
+            <a href="#bang-gia">Bảng giá</a>
           </nav>
           <div className="headerActions">
             <Link className="loginLink" href="/login">Đăng nhập</Link>
@@ -51,15 +62,15 @@ export default function HomePage() {
       </header>
 
       <main>
-        <section className="hero">
-          <div className="container heroGrid">
+        <section className="platform-hero">
+          <div className="platform-container heroGrid">
             <div className="heroCopy">
               <div className="eyebrow"><span /> CÔNG CỤ BÁN HÀNG DÀNH CHO QUÁN ĂN</div>
               <h1>Website riêng cho quán ăn.<br /><span>Khách đặt qua link của bạn.</span></h1>
               <p className="heroText">Tạo gian hàng online, quản lý thực đơn và nhận đơn trong một nơi. Khách mua món trực tiếp trên trang riêng của cửa hàng.</p>
               <div className="heroActions">
                 <Link className="primaryButton" href="/login?mode=signup">Bắt đầu tạo gian hàng <span aria-hidden="true">→</span></Link>
-                <a className="secondaryButton" href="#cach-hoat-dong">Tìm hiểu cách hoạt động</a>
+                <Link className="demoButton" href="/demo">Thử dashboard mẫu <span aria-hidden="true">→</span></Link>
               </div>
               <div className="heroBenefits">
                 <span><i>✓</i> Trang bán hàng riêng</span>
@@ -92,17 +103,17 @@ export default function HomePage() {
         </section>
 
         <section className="trustStrip">
-          <div className="container trustInner">
+          <div className="platform-container trustInner">
             <span>ĐƯỢC THIẾT KẾ CHO VIỆC BÁN HÀNG HẰNG NGÀY</span>
             <b>Thực đơn</b><i /> <b>Đơn hàng</b><i /> <b>Thanh toán</b><i /> <b>Giao nhận</b>
           </div>
         </section>
 
         <section className="featuresSection" id="loi-ich">
-          <div className="container">
+          <div className="platform-container">
             <div className="sectionHeading">
               <div className="eyebrow">MỌI THỨ CHO QUÁN TRÊN MỘT NỀN TẢNG</div>
-              <h2>Tập trung vào món ngon,<br /><span>Gần Đây lo phần bán hàng.</span></h2>
+              <h2>Tập trung vào món ngon,<br /><span>Chúng tôi lo phần bán hàng.</span></h2>
               <p>Từ trang giới thiệu cửa hàng đến lúc đơn được hoàn tất, các công cụ cần thiết đều ở ngay trong tay bạn.</p>
             </div>
             <div className="featureGrid">
@@ -116,7 +127,7 @@ export default function HomePage() {
         </section>
 
         <section className="stepsSection" id="cach-hoat-dong">
-          <div className="container stepsGrid">
+          <div className="platform-container stepsGrid">
             <div className="stepsIntro">
               <div className="eyebrow">BẮT ĐẦU THẬT ĐƠN GIẢN</div>
               <h2>Ba bước để quán<br /><span>có website riêng.</span></h2>
@@ -133,8 +144,32 @@ export default function HomePage() {
           </div>
         </section>
 
+        <section className="pricingSection" id="bang-gia" aria-labelledby="pricing-title">
+          <div className="platform-container">
+            <div className="sectionHeading">
+              <h2 id="pricing-title">Bảng giá</h2>
+            </div>
+            <div className="pricingGrid">
+              {merchantPlans.map((plan) => (
+                <article className={plan.id === "plus" ? "pricingPlan pricingPlanFeatured" : "pricingPlan"} key={plan.id}>
+                  <h3>{plan.name}</h3>
+                  <p className="planPrice"><strong>{formatPlanAmount(plan.amount)}</strong> <span>/ tháng</span></p>
+                  <ul className="pricingFeatures" role="list">
+                    {plan.features.map((feature) => (
+                      <li key={feature}><span aria-hidden="true">✓</span>{feature}</li>
+                    ))}
+                  </ul>
+                  <div className="pricingActions">
+                    <Link className="primaryButton" href={`/login?mode=signup&plan=${plan.id}`}>Đăng ký gói {plan.id === "plus" ? "Nâng cao" : "Cơ bản"} <span aria-hidden="true">→</span></Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
         <section className="customerNote">
-          <div className="container customerNoteInner">
+          <div className="platform-container customerNoteInner">
             <span className="customerNoteIcon" aria-hidden="true">↗</span>
             <div><h2>Khách mua món qua link cửa hàng</h2><p>Gần Đây không có trang danh sách món tổng hợp. Mỗi cửa hàng chia sẻ link riêng để khách vào xem thực đơn và đặt món trực tiếp.</p></div>
             <Link href="/login?mode=signup">Mở gian hàng <span aria-hidden="true">→</span></Link>
@@ -143,14 +178,14 @@ export default function HomePage() {
       </main>
 
       <footer className="footer">
-        <div className="container footerInner">
-          <Link className="brand" href="/">
-            <span className="brandMark">G</span>
-            <span className="brandCopy"><b>gần đây<span>.</span></b><small>Nền tảng cho quán ăn</small></span>
+        <div className="platform-container footerInner">
+          <Link className="brand" href="/" aria-label={`${current.platform_name} - trang giới thiệu`}>
+            {current.logo_url && <Image src={current.logo_url} width={180} height={72} alt={current.platform_name} unoptimized style={{ objectFit: "contain" }} />}
+            
           </Link>
-          <p>Website bán hàng riêng cho cửa hàng đồ ăn địa phương.</p>
-          <div><Link href="/login">Đăng nhập</Link><Link href="/login?mode=signup">Tạo gian hàng</Link></div>
-          <small className="copyright">© 2026 Gần Đây</small>
+          <p>{current.description || defaultPlatformSettings.description}{current.contact_email && <> · <a href={`mailto:${current.contact_email}`}>{current.contact_email}</a></>}{current.support_phone && <> · <a href={`tel:${current.support_phone}`}>{current.support_phone}</a></>}</p>
+          <div><a href="#bang-gia">Bảng giá</a><Link href="/login">Đăng nhập</Link><Link href="/login?mode=signup">Tạo gian hàng</Link></div>
+          <small className="copyright">© {new Date().getFullYear()} {current.platform_name}</small>
         </div>
       </footer>
     </div>

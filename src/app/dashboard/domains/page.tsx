@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Toast from "@/app/toast";
 import { toastVariantForMessage } from "@/lib/toast";
 import { getMerchantContext } from "../data";
+import { requireMerchantPremium } from "@/lib/merchant-billing";
 import { addStoreCustomDomain, removeStoreCustomDomain, verifyStoreCustomDomain } from "../actions";
 
 export const metadata: Metadata = { title: "Tên miền | Quản lý cửa hàng" };
@@ -38,6 +39,7 @@ export default async function StoreDomainsPage({ searchParams }: { searchParams:
   const [{ supabase, membership, store }, query] = await Promise.all([getMerchantContext(), searchParams]);
   if (!store || !membership) redirect("/dashboard");
   if (membership.role !== "owner") redirect("/dashboard/store?message=owner-required");
+  await requireMerchantPremium(supabase, store.id);
 
   const { data: domains, error } = await supabase
     .from("store_domains")

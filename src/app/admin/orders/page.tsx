@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { requirePlatformAdminAccess } from "@/lib/platform-account";
+import { hasOrderWorkRemaining } from "@/lib/order-processing";
+import { isRefundableOrder } from "@/lib/order-refunds";
 import OrderPagination from "@/app/order-pagination";
 import OrderDetailsModal from "@/app/order-details-modal";
+import "@/app/order-list-status.css";
 
 export const metadata: Metadata = { title: "Đơn hàng toàn nền tảng | Quản trị" };
 
@@ -33,6 +37,7 @@ const formatPrice = (value: number) => `${Number(value).toLocaleString("vi-VN")}
 
 export default async function AdminOrdersPage({ searchParams }: PageProps<"/admin/orders">) {
   const [query, supabase] = await Promise.all([searchParams, createClient()]);
+  await requirePlatformAdminAccess(supabase);
   const pageSize = 20;
   const rawPage = Number(query.page ?? 1);
   let currentPage = Number.isSafeInteger(rawPage) && rawPage > 0 && rawPage <= 100_000 ? rawPage : 1;
@@ -84,12 +89,16 @@ export default async function AdminOrdersPage({ searchParams }: PageProps<"/admi
   }
 
   const orderIds = orders?.map((order) => order.id) ?? [];
-  const { data: items } = orderIds.length
-    ? await supabase
-        .from("order_items")
-        .select("id, order_id, product_name_snapshot, unit_price_snapshot_vnd, quantity")
-        .in("order_id", orderIds)
-    : { data: [] };
+  const refundableOrderIds = orders?.filter(isRefundableOrder).map((order) => order.id) ?? [];
+  const [{ data: items }, { data: refunds }] = await Promise.all([
+    orderIds.length
+      ? supabase.from("order_items").select("id, order_id, product_name_snapshot, unit_price_snapshot_vnd, quantity").in("order_id", orderIds)
+      : { data: [] },
+    refundableOrderIds.length
+      ? supabase.from("orders").select("id, refunded_at").in("id", refundableOrderIds)
+      : { data: [] },
+  ]);
+  const refundDates = new Map((refunds ?? []).map((order) => [order.id, order.refunded_at]));
   const storeById = new Map(storeRows.map((store) => [store.id, store]));
 
   return (
@@ -142,9 +151,10 @@ export default async function AdminOrdersPage({ searchParams }: PageProps<"/admi
                   ? ""
                   : `${(Number(order.delivery_distance_m) / 1000).toFixed(1)} km`;
                 const cancellationPending = order.cancellation_request_status === "pending";
+                const hasWorkRemaining = hasOrderWorkRemaining(order, refundDates.get(order.id));
                 const createdAt = new Date(order.created_at).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
                 return (
-                  <tr className={order.status === "completed" || order.status === "cancelled" ? "is-order-closed" : undefined} key={order.id}>
+                  <tr className={hasWorkRemaining ? undefined : "is-order-inactive"} key={order.id}>
                     <td><b className="admin-order-code">{order.public_code}</b><small>#{order.id.slice(0, 8)}</small></td>
                     <td><div className="admin-table-store"><b>{store?.name ?? "Cửa hàng không xác định"}</b>{store?.slug && <Link href={`/${store.slug}`} target="_blank">/{store.slug} ↗</Link>}</div></td>
                     <td><div className="admin-table-customer"><b>{order.customer_name}</b><a href={`tel:${order.customer_phone}`}>{order.customer_phone}</a></div></td>
@@ -154,7 +164,7 @@ export default async function AdminOrdersPage({ searchParams }: PageProps<"/admi
                     <td><div className="admin-table-payment"><span>{paymentMethodLabels[order.payment_method] ?? order.payment_method}</span><small className={order.payment_status === "paid" ? "is-paid" : "is-unpaid"}>{paymentStatusLabels[order.payment_status] ?? order.payment_status}</small></div></td>
                     <td><time className="admin-order-time">{new Date(order.created_at).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</time></td>
                     <td>
-                      <OrderDetailsModal orderCode={order.public_code} subtitle={`${store?.name ?? "Cửa hàng không xác định"} · ${createdAt}`} variant="admin">
+                      <OrderDetailsModal orderCode={order.public_code} subtitle={`${store?.name ?? "Cửa hàng không xác định"} · ${createdAt}`} variant="admin" openOnLoad={query.open_order === order.id}>
                         <div className="order-modal-overview">
                           <div><small>Cửa hàng</small><b>{store?.name ?? "Cửa hàng không xác định"}</b>{store?.slug && <Link href={`/${store.slug}`} target="_blank">/{store.slug} ↗</Link>}</div>
                           <div><small>Khách hàng</small><b>{order.customer_name}</b><a href={`tel:${order.customer_phone}`}>{order.customer_phone}</a></div>

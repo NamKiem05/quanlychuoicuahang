@@ -1,6 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
+import { setProductVisibility } from "../actions";
 import ProductForm from "./product-form";
 import ProductOptionsManager, { type ProductOptionGroup } from "./product-options-manager";
 
@@ -16,19 +19,35 @@ type ManagedProduct = {
   image_url: string | null;
   description: string;
   stock_quantity: number | null;
+  low_stock_threshold: number;
   optionGroups: ProductOptionGroup[];
 };
+
+function ProductVisibilityButton({ name, active }: { name: string; active: boolean }) {
+  const { pending } = useFormStatus();
+  const label = active ? "Tạm ngừng bán" : "Bật bán";
+  return (
+    <button type="submit" className="product-visibility-button"
+      aria-label={pending ? `Đang cập nhật món ${name}` : `${label} món ${name}`} disabled={pending}>
+      {pending ? "Đang cập nhật…" : label}
+    </button>
+  );
+}
 
 export default function ProductAdminList({
   storeId,
   categories,
   products,
+  initialProductId,
+  showLowStockThreshold,
 }: {
   storeId: string;
   categories: CategoryOption[];
   products: ManagedProduct[];
+  initialProductId?: string;
+  showLowStockThreshold: boolean;
 }) {
-  const [selectedProduct, setSelectedProduct] = useState<ManagedProduct | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<ManagedProduct | null>(() => products.find((product) => product.id === initialProductId) ?? null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const modalRef = useRef<HTMLElement | null>(null);
@@ -77,7 +96,7 @@ export default function ProductAdminList({
     <>
       <div className="product-admin-list">
         {products.map((product) => (
-          <article className="product-editor" key={product.id}>
+          <article className="product-editor product-admin-row" key={product.id}>
             <button
               className="product-editor-summary product-manage-trigger"
               type="button"
@@ -88,6 +107,11 @@ export default function ProductAdminList({
                 setSelectedProduct(product);
               }}
             >
+              <span className="product-admin-thumbnail" aria-hidden="true">
+                {product.image_url
+                  ? <Image src={product.image_url} alt="" width={56} height={56} unoptimized onError={(event) => { event.currentTarget.hidden = true; }} />
+                  : null}
+              </span>
               <span className="product-editor-heading">
                 <span>
                   <b>{product.name}</b>
@@ -98,6 +122,11 @@ export default function ProductAdminList({
               </span>
               <span className="product-editor-open-label">Quản lý món <span aria-hidden="true">↗</span></span>
             </button>
+            <form className="product-visibility-form" action={setProductVisibility}>
+              <input type="hidden" name="product_id" value={product.id} />
+              <input type="hidden" name="status" value={product.status === "active" ? "archived" : "active"} />
+              <ProductVisibilityButton name={product.name} active={product.status === "active"} />
+            </form>
           </article>
         ))}
         {!products.length && <div className="empty-row">Chưa có món nào. Thêm món đầu tiên ở biểu mẫu bên trên.</div>}
@@ -123,6 +152,7 @@ export default function ProductAdminList({
                   <p>Cập nhật tên, giá, tồn kho và trạng thái.</p>
                 </div>
                 <ProductForm
+                  showLowStockThreshold={showLowStockThreshold}
                   storeId={storeId}
                   categories={categories}
                   product={{
@@ -134,6 +164,7 @@ export default function ProductAdminList({
                     image_url: selectedProduct.image_url,
                     description: selectedProduct.description,
                     stock_quantity: selectedProduct.stock_quantity,
+                    low_stock_threshold: selectedProduct.low_stock_threshold,
                   }}
                 />
               </section>
