@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import AdminNavigation from "./admin-navigation";
+import LoadingScreen from "@/app/loading-screen";
 import AdminChatNotificationsProvider from "./admin-chat-notifications";
 import { signOut } from "@/app/dashboard/actions";
 import "./admin-navigation.css";
@@ -12,7 +13,7 @@ import { defaultPlatformSettings, getPlatformSettings } from "@/lib/platform-set
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
-    <Suspense fallback={<div className="admin-platform-loading" role="status">Đang xác minh quyền quản trị…</div>}>
+    <Suspense fallback={<LoadingScreen />}>
       <AdminRequestLayout>{children}</AdminRequestLayout>
     </Suspense>
   );
@@ -24,9 +25,8 @@ async function AdminRequestLayout({ children }: { children: ReactNode }) {
   const { data: authData } = await supabase.auth.getClaims();
   if (!authData?.claims?.sub) redirect("/login");
 
-  const { settings } = await getPlatformSettings();
+  const [{ settings }, { data: isAdmin }] = await Promise.all([getPlatformSettings(), supabase.rpc("is_platform_admin")]);
   const branding = settings ?? defaultPlatformSettings;
-  const { data: isAdmin } = await supabase.rpc("is_platform_admin");
   const support = isAdmin ? null : await supabase.rpc("has_support_ticket_permission");
   const supportOnly = !isAdmin && support?.data === true && !support.error;
   if (!isAdmin && !supportOnly) {
@@ -70,7 +70,7 @@ async function AdminRequestLayout({ children }: { children: ReactNode }) {
               <form action={signOut}><button className="secondary-submit" type="submit">Đăng xuất</button></form>
             </div>
           </header>
-          <div className="admin-page-content">{children}</div>
+          <div className="admin-page-content"><Suspense fallback={<LoadingScreen contained />}>{children}</Suspense></div>
         </div>
       </div>
     </AdminChatNotificationsProvider>

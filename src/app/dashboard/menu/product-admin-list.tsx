@@ -37,6 +37,20 @@ function ProductVisibilityButton({ name, active }: { name: string; active: boole
   );
 }
 
+function ProductActions({ product, mode, onManage }: { product: ManagedProduct; mode: MerchandiseMode; onManage: (trigger: HTMLButtonElement | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: PointerEvent) => { if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); trigger.current?.focus(); } };
+    document.addEventListener("pointerdown", outside); document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
+  }, [open]);
+  return <div className="product-actions" ref={root}><button ref={trigger} type="button" className="product-actions-trigger" aria-label={`Thao tác cho ${product.name}`} aria-expanded={open} onClick={() => setOpen(!open)}>⋯</button>{open && <div className="product-actions-menu"><button type="button" onClick={() => { setOpen(false); onManage(trigger.current); }}>Quản lý sản phẩm</button>{mode !== "food" && <Link href={`/dashboard/menu/${product.id}/variants`} onClick={() => setOpen(false)}>Quản lý biến thể</Link>}<form action={setProductVisibility}><input type="hidden" name="product_id" value={product.id} /><input type="hidden" name="status" value={product.status === "active" ? "archived" : "active"} /><ProductVisibilityButton name={product.name} active={product.status === "active"} /></form></div>}</div>;
+}
+
 export default function ProductAdminList({
   storeId,
   categories,
@@ -125,14 +139,8 @@ export default function ProductAdminList({
                 </span>
                 <span className={`status-badge status-${product.status}`}>{product.status === "active" ? "Đang bán" : product.status === "draft" ? "Bản nháp" : "Đã ẩn"}</span>
               </span>
-              <span className="product-editor-open-label">Quản lý sản phẩm <span aria-hidden="true">↗</span></span>
             </button>
-            {mode !== "food" && <Link className="product-variants-link" href={`/dashboard/menu/${product.id}/variants`} aria-label={`Quản lý biến thể của ${product.name}`}>Biến thể</Link>}
-            <form className="product-visibility-form" action={setProductVisibility}>
-              <input type="hidden" name="product_id" value={product.id} />
-              <input type="hidden" name="status" value={product.status === "active" ? "archived" : "active"} />
-              <ProductVisibilityButton name={product.name} active={product.status === "active"} />
-            </form>
+            <ProductActions product={product} mode={mode} onManage={(trigger) => { triggerRef.current = trigger; setSelectedProduct(product); }} />
           </article>
         ))}
         {!products.length && <div className="empty-row">Chưa có sản phẩm nào. Thêm sản phẩm đầu tiên ở biểu mẫu bên trên.</div>}

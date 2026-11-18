@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
+import LoadingScreen from "@/app/loading-screen";
 import { defaultPlatformSettings, getPlatformSettings } from "@/lib/platform-settings";
 import DashboardAccountMenu from "./account-menu";
 import DashboardSidebar from "./dashboard-sidebar";
@@ -12,18 +13,18 @@ import ActiveStoreFormGuard from "./active-store-form-guard";
 import { isMerchandiseMode } from "@/lib/merchandise-mode";
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
-  const { supabase, store, email, membership } = await getMerchantContext();
-  const { settings } = await getPlatformSettings();
+  const [{ supabase, store, email, membership }, { settings }] = await Promise.all([getMerchantContext(), getPlatformSettings()]);
   const branding = settings ?? defaultPlatformSettings;
-  const modeResult = store ? await supabase.rpc("get_store_merchandise_mode", { target_store: store.id }) : { data: "general" };
-  const mode = isMerchandiseMode(modeResult.data) ? modeResult.data : "general";
-  const brandsModule = store ? await supabase.rpc("store_module_enabled", { target_store: store.id, target_module: "brands" }) : { data: false, error: null };
-  const [{ count: pendingOrderCount }, premiumAvailable] = store
+  const [modeResult, brandsModule, orderCount, premiumAvailable] = store
     ? await Promise.all([
+      supabase.rpc("get_store_merchandise_mode", { target_store: store.id }),
+      supabase.rpc("store_module_enabled", { target_store: store.id, target_module: "brands" }),
       supabase.from("orders").select("id", { count: "exact", head: true }).eq("store_id", store.id).eq("status", "pending"),
       hasMerchantPremium(supabase, store.id),
     ])
-    : [{ count: null }, false];
+    : [{ data: "general" }, { data: false, error: null }, { count: null }, false];
+  const mode = isMerchandiseMode(modeResult.data) ? modeResult.data : "general";
+  const pendingOrderCount = orderCount.count;
 
   return (
     <div className="admin-app-shell admin-platform-shell merchant-dashboard-shell">
@@ -42,7 +43,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
             <DashboardAccountMenu storeName={store?.name ?? null} email={email} role={membership?.role ?? null} />
           </div>
         </header>
-        <div className="admin-page-content">{children}</div>
+        <div className="admin-page-content"><Suspense fallback={<LoadingScreen contained />}>{children}</Suspense></div>
       </div>
       {store && <StoreAdminChat mode="merchant" theme="admin" storeId={store.id} storeName={store.name} />}
     </div>

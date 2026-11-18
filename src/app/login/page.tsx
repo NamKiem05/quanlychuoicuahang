@@ -7,10 +7,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { findMerchantPlan } from "@/lib/merchant-plans";
 import "./login.css";
+import LoadingScreen from "@/app/loading-screen";
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<main className="store-auth"><p role="status">Đang tải…</p></main>}>
+    <Suspense fallback={<LoadingScreen />}>
       <LoginFromUrl />
     </Suspense>
   );
