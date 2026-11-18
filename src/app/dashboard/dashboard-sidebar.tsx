@@ -18,7 +18,7 @@ const groups: { label: string; items: MenuItem[] }[] = [
     { href: "/dashboard/brands", label: "Thương hiệu", icon: "store" },
     { href: "/dashboard/orders", label: "Đơn hàng", icon: "orders" },
     { label: "Khách hàng", icon: "accounts" },
-    { label: "Kho hàng", icon: "store" },
+    { href: "/dashboard/inventory", label: "Kho hàng", icon: "store" },
     { href: "/dashboard/store#delivery-settings", label: "Vận chuyển", icon: "delivery" },
     { href: "/dashboard/store#payment-settings", label: "Thanh toán", icon: "payment" },
     { label: "Đổi trả & khiếu nại", icon: "orders" },
