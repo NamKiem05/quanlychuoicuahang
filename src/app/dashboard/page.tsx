@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getCurrentMerchantPlan } from "@/lib/merchant-billing";
 import OverviewRevenue, { type RevenueSearchParams } from "@/app/overview-revenue";
 import { createStore } from "./actions";
 import StoreLocationPicker from "./store/location-picker";
@@ -22,12 +20,10 @@ type MerchantOverview = {
 export const metadata: Metadata = { title: "Tổng quan cửa hàng | Bếp Nhà Mơ" };
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<RevenueSearchParams & { message?: string }> }) {
-  const [{ supabase, store, userId, membership }, query] = await Promise.all([getMerchantContext(), searchParams]);
+  const [{ supabase, store, membership }, query] = await Promise.all([getMerchantContext(), searchParams]);
   const message = query.message ? dashboardMessages[query.message] : undefined;
 
   if (!store) {
-    const { data: plan } = await getCurrentMerchantPlan(supabase, userId);
-    if (!plan) redirect("/merchant-plan");
     return (
       <main className="admin-content">
         <div className="dashboard-kicker">KHU VỰC CHỦ CỬA HÀNG</div>

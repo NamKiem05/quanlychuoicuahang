@@ -53,7 +53,6 @@ export default function DashboardAccountMenu({ storeName, email, role }: {
         {storeName && <Link href="/select-store" onClick={() => setOpen(false)}>Chuyển cửa hàng <span aria-hidden="true">→</span></Link>}
         <Link href="/staff-invitations" onClick={() => setOpen(false)}>Lời mời cửa hàng <span aria-hidden="true">→</span></Link>
         <Link href="/dashboard/account" onClick={() => setOpen(false)}>Đổi mật khẩu <span aria-hidden="true">→</span></Link>
-        {role === "owner" && <Link href="/merchant-plan" onClick={() => setOpen(false)}>Gói dịch vụ <span aria-hidden="true">→</span></Link>}
         <form action={signOut}><button type="submit">Đăng xuất <span aria-hidden="true">↗</span></button></form>
       </div>
     </div>

@@ -144,7 +144,7 @@ function LoginForm({ initialMode, plan, callbackError, accessError, invitationNe
           </div>
           <div className="store-auth-heading" key={mode}>
             <h1 id="store-auth-title">{mode === "signin" ? "Chào mừng bạn trở lại" : "Tạo tài khoản chủ cửa hàng"}</h1>
-            <p className="store-auth-intro">{mode === "signin" ? "Đăng nhập để vào khu vực quản lý cửa hàng." : plan ? `Tạo tài khoản để đăng ký ${plan.name.toLocaleLowerCase("vi-VN")}.` : "Tạo tài khoản để chọn gói dịch vụ và thiết lập gian hàng."}</p>
+            <p className="store-auth-intro">{mode === "signin" ? "Đăng nhập để vào khu vực quản lý cửa hàng." : plan ? `Tạo tài khoản để đăng ký ${plan.name.toLocaleLowerCase("vi-VN")}.` : "Tạo tài khoản để thiết lập gian hàng."}</p>
           </div>
           {mode === "signup" && signupEnabled === false && <p className="store-auth-message" role="status">Đăng ký tài khoản mới đang tạm dừng.</p>}
 

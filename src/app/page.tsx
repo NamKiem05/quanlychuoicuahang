@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { connection } from "next/server";
 import { defaultPlatformSettings, getPlatformSettings } from "@/lib/platform-settings";
-import { formatPlanAmount, merchantPlans } from "@/lib/merchant-plans";
+
 
 export async function generateMetadata(): Promise<Metadata> {
   await connection();
@@ -52,7 +52,6 @@ export default async function HomePage() {
           <nav className="nav" aria-label="Điều hướng chính">
             <a href="#loi-ich">Lợi ích</a>
             <a href="#cach-hoat-dong">Cách hoạt động</a>
-            <a href="#bang-gia">Bảng giá</a>
           </nav>
           <div className="headerActions">
             <Link className="loginLink" href="/login">Đăng nhập</Link>
@@ -144,30 +143,6 @@ export default async function HomePage() {
           </div>
         </section>
 
-        <section className="pricingSection" id="bang-gia" aria-labelledby="pricing-title">
-          <div className="platform-container">
-            <div className="sectionHeading">
-              <h2 id="pricing-title">Bảng giá</h2>
-            </div>
-            <div className="pricingGrid">
-              {merchantPlans.map((plan) => (
-                <article className={plan.id === "plus" ? "pricingPlan pricingPlanFeatured" : "pricingPlan"} key={plan.id}>
-                  <h3>{plan.name}</h3>
-                  <p className="planPrice"><strong>{formatPlanAmount(plan.amount)}</strong> <span>/ tháng</span></p>
-                  <ul className="pricingFeatures" role="list">
-                    {plan.features.map((feature) => (
-                      <li key={feature}><span aria-hidden="true">✓</span>{feature}</li>
-                    ))}
-                  </ul>
-                  <div className="pricingActions">
-                    <Link className="primaryButton" href={`/login?mode=signup&plan=${plan.id}`}>Đăng ký gói {plan.id === "plus" ? "Nâng cao" : "Cơ bản"} <span aria-hidden="true">→</span></Link>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-
         <section className="customerNote">
           <div className="platform-container customerNoteInner">
             <span className="customerNoteIcon" aria-hidden="true">↗</span>
@@ -184,7 +159,7 @@ export default async function HomePage() {
             
           </Link>
           <p>{current.description || defaultPlatformSettings.description}{current.contact_email && <> · <a href={`mailto:${current.contact_email}`}>{current.contact_email}</a></>}{current.support_phone && <> · <a href={`tel:${current.support_phone}`}>{current.support_phone}</a></>}</p>
-          <div><a href="#bang-gia">Bảng giá</a><Link href="/login">Đăng nhập</Link><Link href="/login?mode=signup">Tạo gian hàng</Link></div>
+          <div><Link href="/login">Đăng nhập</Link><Link href="/login?mode=signup">Tạo gian hàng</Link></div>
           <small className="copyright">© {new Date().getFullYear()} {current.platform_name}</small>
         </div>
       </footer>
