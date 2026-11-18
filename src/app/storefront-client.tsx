@@ -166,20 +166,26 @@ export default function StorefrontClient({ store, categories, products, reviews,
   const [retailCheckoutError, setRetailCheckoutError] = useState("");
   const retailCheckoutPending = useRef(false);
   useEffect(() => {
-    if (merchandiseMode !== "retail" || new URLSearchParams(window.location.search).get("checkout") !== "1") return;
+    if (merchandiseMode !== "retail") return;
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get("checkout") === "1";
+    const viewCart = params.get("cart") === "1";
     const frame = window.requestAnimationFrame(() => { try {
       const key = `growdesk-checkout:${store.id}`;
-      const saved = localStorage.getItem(key);
+      const saved = (checkout ? localStorage.getItem(key) : null) || sessionStorage.getItem(`growdesk-cart:${store.id}`);
       if (saved) {
         const parsed: unknown = JSON.parse(saved);
         if (Array.isArray(parsed)) setCart(parsed.filter((line): line is CartLine =>
           line && typeof line.id === "string" && typeof line.productId === "string" &&
           Array.isArray(line.optionIds) && Number.isInteger(line.quantity) && line.quantity > 0 && line.quantity <= 20));
         localStorage.removeItem(key);
+        sessionStorage.removeItem(`growdesk-cart:${store.id}`);
       }
-      setRetailCartView(true);
+      if (checkout || viewCart) setRetailCartView(true);
+      if (params.get("search")) { setSearch(params.get("search") || ""); setShowFullMenu(true); }
       const url = new URL(window.location.href);
       url.searchParams.delete("checkout");
+      url.searchParams.delete("cart");
       window.history.replaceState(window.history.state, "", url);
     } catch { /* A disabled or unavailable localStorage leaves the cart empty. */ } });
     return () => window.cancelAnimationFrame(frame);
@@ -731,7 +737,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
       {closedOnEntry && !acceptsOrders && !closedNoticeDismissed && (
         <StoreClosedNotice paused={!store.accepts_orders} nextOpening={hoursStatus.nextOpening} onDismiss={() => setClosedNoticeDismissed(true)} />
       )}
-      {isRetail ? <RetailStorefront store={store} categories={categories} products={visibleProducts} allProducts={products} reviews={reviews} activeCategory={activeCategory} search={search} cartCount={cartCount} acceptsOrders={acceptsOrders} covers={covers} onCategory={(category) => { setActiveCategory(category); setSearch(""); setShowFullMenu(true); document.getElementById("retail-products")?.scrollIntoView({ behavior: "smooth" }); }} onSearch={setSearch} onSearchSubmit={() => { setShowFullMenu(true); document.getElementById("retail-products")?.scrollIntoView({ behavior: "smooth" }); }} onShowAll={() => resetMenu(true)} onCart={openCart} onAdd={addToCart} onConfirm={(id, optionIds, quantity, buyNow, trigger, variantId) => {
+      {isRetail ? <RetailStorefront onAccountNavigate={() => { try { sessionStorage.setItem(`growdesk-cart:${store.id}`, JSON.stringify(cart)); document.cookie = `growdesk_customer_store=${encodeURIComponent(store.slug)}; path=/; max-age=2592000; samesite=lax${window.location.protocol === "https:" ? "; secure" : ""}`; } catch {} }} store={store} categories={categories} products={visibleProducts} allProducts={products} reviews={reviews} activeCategory={activeCategory} search={search} cartCount={cartCount} acceptsOrders={acceptsOrders} covers={covers} onCategory={(category) => { setActiveCategory(category); setSearch(""); setShowFullMenu(true); document.getElementById("retail-products")?.scrollIntoView({ behavior: "smooth" }); }} onSearch={setSearch} onSearchSubmit={() => { setShowFullMenu(true); document.getElementById("retail-products")?.scrollIntoView({ behavior: "smooth" }); }} onShowAll={() => resetMenu(true)} onCart={openCart} onAdd={addToCart} onConfirm={(id, optionIds, quantity, buyNow, trigger, variantId) => {
         if (buyNow && retailCheckoutPending.current) return "Đang kiểm tra phiên đăng nhập.";
         const product = products.find((item) => item.id === id);
         if (!product || !acceptsOrders) return "Cửa hàng chưa thể nhận đơn.";
@@ -759,7 +765,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
         promoInput={promotionCodeInput} promoCode={promotionForCart?.code ?? null} promoFeedback={promotionFeedback} promoStale={Boolean(appliedPromotion && !promotionForCart)}
         acceptsOrders={acceptsOrders} submitting={isSubmittingOrder} applying={isApplyingPromotion} error={orderError}
         onBack={() => { setOrderError(""); setRetailCheckoutView(false); setRetailCartView(true); }} onSubmit={placeOrder}
-        onFulfillment={changeFulfillmentMethod} onPayment={setPaymentMethod} onLocate={requestDeliveryLocation}
+        onFulfillment={changeFulfillmentMethod} onPayment={setPaymentMethod} onAddressChange={() => { setDeliveryLocation(null); setDeliveryLocationMessage(""); }} onLocate={requestDeliveryLocation}
         onPromoInput={(value) => { setPromotionCodeInput(value); setAppliedPromotion(null); setPromotionFeedback(null); }}
         onPromoApply={() => { void applyPromotion(); }} onPromoClear={() => { setAppliedPromotion(null); setPromotionCodeInput(""); setPromotionFeedback(null); }}
       />} renderCart={(openDetail) => <RetailCart lines={cartLines} cartCount={cartCount} subtotal={cartTotal} discount={promotionDiscount} appliedCode={promotionForCart?.code ?? null} promotionInput={promotionCodeInput} promotionFeedback={promotionFeedback} promotionStale={Boolean(appliedPromotion && !promotionForCart)} applying={isApplyingPromotion} acceptsOrders={acceptsOrders} checkoutError={retailCheckoutError} recommendations={products.filter((product) => !cart.some((line) => line.productId === product.id))} onChange={changeQuantity} onPromotionInput={(value) => { setPromotionCodeInput(value); setAppliedPromotion(null); setPromotionFeedback(null); }} onApply={() => { void applyPromotion(); }} onClear={() => { setAppliedPromotion(null); setPromotionCodeInput(""); setPromotionFeedback(null); }} onContinue={() => { setRetailCartView(false); resetMenu(true); }} onCheckout={(trigger) => { void startRetailCheckout(trigger); }} onDetail={openDetail} />} cartQuantity={(id) => cart.filter((line) => line.productId === id).reduce((sum, line) => sum + line.quantity, 0)} /> : <>
