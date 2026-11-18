@@ -8,6 +8,9 @@ import BankTransferQr, { type BankTransferDetails } from "@/app/bank-transfer-qr
 import SidebarIcon from "@/app/sidebar-icon";
 import { getStoreBannerUrls, type StoreThemePreset, type StorefrontLayoutPreset, type StorefrontSection, type StorefrontStyle } from "@/lib/store-appearance";
 import StoreBannerSlideshow from "@/app/store-banner-slideshow";
+import RetailStorefront from "@/app/retail-storefront";
+import RetailCart from "@/app/retail-cart";
+import type { RetailVariant } from "@/app/retail-variant-picker";
 import { getOrderHoursStatus, type OrderHours } from "@/lib/store-order-hours";
 import "./storefront-closed-notice.css";
 import "./storefront-styles.css";
@@ -41,6 +44,7 @@ export type StorefrontProduct = {
   image: string;
   stock_quantity: number | null;
   optionGroups: StorefrontProductOptionGroup[];
+  variants?: RetailVariant[];
 };
 
 export type StorefrontReview = {
@@ -54,6 +58,7 @@ export type StorefrontReview = {
 };
 
 export type StorefrontData = {
+  merchandiseMode?: "retail" | "general";
   store: {
     id: string;
     name: string;
@@ -90,7 +95,7 @@ export type StorefrontData = {
 const formatPrice = (price: number) => `${price.toLocaleString("vi-VN")}₫`;
 const formatDistance = (meters: number) => `${(meters / 1000).toLocaleString("vi-VN", { maximumFractionDigits: 1 })} km`;
 
-type CartLine = { id: string; productId: string; optionIds: string[]; quantity: number };
+type CartLine = { id: string; productId: string; optionIds: string[]; variantId?: string; quantity: number };
 type ActivePanel = "cart" | "checkout" | "success" | "customize" | null;
 type OrderPayment = {
   method: "cash_on_pickup" | "bank_transfer";
@@ -121,17 +126,17 @@ function StoreClosedNotice({ paused, nextOpening, onDismiss }: {
         <button className="storefront-closed-dismiss" type="submit" aria-label="Đóng thông báo">×</button>
         <div className="storefront-closed-icon" aria-hidden="true"><span /></div>
         <h2 id="storefront-closed-title">Cửa hàng đang đóng</h2>
-        <p id="storefront-closed-message">{paused ? "Quán đang tạm ngưng nhận đơn." : "Quán đã ngoài giờ nhận đơn."} Bạn vẫn có thể xem thực đơn.</p>
+        <p id="storefront-closed-message">{paused ? "Cửa hàng đang tạm ngưng nhận đơn." : "Cửa hàng đã ngoài giờ nhận đơn."} Bạn vẫn có thể xem sản phẩm.</p>
         {!paused && nextOpening && (
           <p className="storefront-closed-hours"><span>Mở lại lúc</span><strong>{nextOpening}</strong></p>
         )}
-        <button className="storefront-closed-menu" type="submit">Xem thực đơn <span aria-hidden="true">→</span></button>
+        <button className="storefront-closed-menu" type="submit">Xem sản phẩm <span aria-hidden="true">→</span></button>
       </form>
     </dialog>
   );
 }
 
-export default function StorefrontClient({ store, categories, products, reviews, initialTimestamp }: StorefrontData) {
+export default function StorefrontClient({ store, categories, products, reviews, initialTimestamp, merchandiseMode = "general" }: StorefrontData) {
   const supabase = useMemo(() => createClient(), []);
   const [timestamp, setTimestamp] = useState(initialTimestamp);
   useEffect(() => {
@@ -153,6 +158,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
   const [showAllReviews, setShowAllReviews] = useState(false);
   const menuHeadingRef = useRef<HTMLHeadingElement>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [retailCartView, setRetailCartView] = useState(false);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [orderCode, setOrderCode] = useState("");
   const [orderEmail, setOrderEmail] = useState("");
@@ -265,14 +271,15 @@ export default function StorefrontClient({ store, categories, products, reviews,
   const cartLines = cart.flatMap((line) => {
     const product = products.find((item) => item.id === line.productId);
     if (!product) return [];
+    const variant = product.variants?.find((item) => item.id === line.variantId);
     const selectedOptions = product.optionGroups.flatMap((group) => group.options
       .filter((option) => line.optionIds.includes(option.id))
       .map((option) => ({ group: group.name, option })));
     return [{
       ...line,
       product,
-      unitPrice: product.price + selectedOptions.reduce((sum, item) => sum + item.option.price_adjustment_vnd, 0),
-      optionLabels: selectedOptions.map((item) => `${item.group}: ${item.option.name}`),
+      unitPrice: (variant?.price ?? product.price) + selectedOptions.reduce((sum, item) => sum + item.option.price_adjustment_vnd, 0),
+      optionLabels: [...(variant ? Object.entries(variant.attributes).map(([name, value]) => `${name}: ${value}`) : []), ...selectedOptions.map((item) => `${item.group}: ${item.option.name}`)],
     }];
   });
   const customizingProduct = products.find((product) => product.id === customizingProductId) ?? null;
@@ -340,14 +347,17 @@ export default function StorefrontClient({ store, categories, products, reviews,
     window.requestAnimationFrame(() => dialogTriggerRef.current?.focus());
   }
 
-  function addConfiguredProduct(product: StorefrontProduct, selectedOptionIds: string[], quantity = 1) {
+  function addConfiguredProduct(product: StorefrontProduct, selectedOptionIds: string[], quantity = 1, closeDialog = true, variantId?: string) {
     if (product.stock_quantity === 0) return;
     const optionIds = [...selectedOptionIds].sort();
-    const lineId = `${product.id}:${optionIds.join(",")}`;
+    const lineId = `${product.id}:${variantId ?? ""}:${optionIds.join(",")}`;
+    const variant = product.variants?.find((item) => item.id === variantId);
+    if (product.variants?.length && !variant) return;
     const currentProductQuantity = cart
       .filter((line) => line.productId === product.id)
       .reduce((sum, line) => sum + line.quantity, 0);
-    if (quantity < 1 || currentProductQuantity + quantity > Math.min(20, product.stock_quantity ?? 20)) {
+    const variantQuantity = cart.filter((line) => line.productId === product.id && line.variantId === variantId).reduce((sum, line) => sum + line.quantity, 0);
+    if (quantity < 1 || currentProductQuantity + quantity > 20 || (variant ? variantQuantity + quantity > variant.stock : currentProductQuantity + quantity > (product.stock_quantity ?? 20))) {
       setOptionError("Số lượng chọn vượt quá mức có thể thêm vào giỏ.");
       return;
     }
@@ -356,7 +366,8 @@ export default function StorefrontClient({ store, categories, products, reviews,
       const productQuantity = currentCart
         .filter((line) => line.productId === product.id)
         .reduce((sum, line) => sum + line.quantity, 0);
-      if (productQuantity + quantity > 20 || (product.stock_quantity !== null && productQuantity + quantity > product.stock_quantity)) return currentCart;
+      const currentVariantQuantity = currentCart.filter((line) => line.productId === product.id && line.variantId === variantId).reduce((sum, line) => sum + line.quantity, 0);
+      if (productQuantity + quantity > 20 || (variant ? currentVariantQuantity + quantity > variant.stock : product.stock_quantity !== null && productQuantity + quantity > product.stock_quantity)) return currentCart;
       const existingLine = currentCart.find((line) => line.id === lineId);
       if (existingLine) {
         return currentCart.map((line) =>
@@ -365,11 +376,11 @@ export default function StorefrontClient({ store, categories, products, reviews,
             : line,
         );
       }
-      return [...currentCart, { id: lineId, productId: product.id, optionIds, quantity }];
+      return [...currentCart, { id: lineId, productId: product.id, optionIds, variantId, quantity }];
     });
     setAddedProduct(product.id);
     window.setTimeout(() => setAddedProduct(null), 1200);
-    closeOrderModal();
+    if (closeDialog) { closeOrderModal(); if (merchandiseMode === "retail") setRetailCartView(true); }
   }
 
   function addToCart(productId: string, trigger?: HTMLElement) {
@@ -414,7 +425,13 @@ export default function StorefrontClient({ store, categories, products, reviews,
     const currentLine = cart.find((line) => line.id === lineId);
     const product = products.find((item) => item.id === currentLine?.productId);
     if (change > 0 && currentLine && currentLine.quantity >= 20) return;
-    if (change > 0 && product?.stock_quantity !== null && product?.stock_quantity !== undefined) {
+    if (change > 0 && currentLine && cart.filter((line) => line.productId === currentLine.productId).reduce((sum, line) => sum + line.quantity, 0) >= 20) return;
+    if (change > 0 && currentLine?.variantId) {
+      const variant = product?.variants?.find((item) => item.id === currentLine.variantId);
+      const total = cart.filter((line) => line.productId === currentLine.productId && line.variantId === currentLine.variantId).reduce((sum, line) => sum + line.quantity, 0);
+      if (!variant || total >= variant.stock) return;
+    }
+    if (change > 0 && !currentLine?.variantId && product?.stock_quantity !== null && product?.stock_quantity !== undefined) {
       const currentProductQuantity = cart
         .filter((line) => line.productId === product.id)
         .reduce((sum, line) => sum + line.quantity, 0);
@@ -552,6 +569,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
           product_id: line.productId,
           quantity: line.quantity,
           option_ids: line.optionIds,
+          ...(line.variantId ? { variant_id: line.variantId } : {}),
         })),
         requested_payment_method: requestedPaymentMethod,
         requested_fulfillment: requestedFulfillment,
@@ -623,6 +641,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
 
   function openCart(trigger: HTMLButtonElement) {
     dialogTriggerRef.current = trigger;
+    if (merchandiseMode === "retail") { setRetailCartView(true); return; }
     setActivePanel("cart");
   }
 
@@ -640,11 +659,25 @@ export default function StorefrontClient({ store, categories, products, reviews,
   }
 
   const covers = getStoreBannerUrls(store.banner_urls, store.banner_url);
+  const isRetail = merchandiseMode === "retail";
   return (
-    <main className="storefront-page storefront-home" id="top" data-theme={store.theme_preset} data-layout={store.storefront_layout} data-style={store.storefront_style}>
+    <main className={`storefront-page storefront-home${isRetail ? " is-retail" : ""}`} id="top" data-theme={store.theme_preset} data-layout={store.storefront_layout} data-style={store.storefront_style}>
       {closedOnEntry && !acceptsOrders && !closedNoticeDismissed && (
         <StoreClosedNotice paused={!store.accepts_orders} nextOpening={hoursStatus.nextOpening} onDismiss={() => setClosedNoticeDismissed(true)} />
       )}
+      {isRetail ? <RetailStorefront store={store} categories={categories} products={visibleProducts} allProducts={products} reviews={reviews} activeCategory={activeCategory} search={search} cartCount={cartCount} acceptsOrders={acceptsOrders} covers={covers} onCategory={(category) => { setActiveCategory(category); setSearch(""); setShowFullMenu(true); document.getElementById("retail-products")?.scrollIntoView({ behavior: "smooth" }); }} onSearch={setSearch} onSearchSubmit={() => { setShowFullMenu(true); document.getElementById("retail-products")?.scrollIntoView({ behavior: "smooth" }); }} onShowAll={() => resetMenu(true)} onCart={openCart} onAdd={addToCart} onConfirm={(id, optionIds, quantity, buyNow, trigger, variantId) => {
+        const product = products.find((item) => item.id === id);
+        if (!product || !acceptsOrders) return "Cửa hàng chưa thể nhận đơn.";
+        if (optionIds.length > 40 || product.optionGroups.some((group) => { const count = group.options.filter((option) => optionIds.includes(option.id)).length; return count < group.min_selections || count > group.max_selections; })) return "Hãy kiểm tra các lựa chọn sản phẩm.";
+        const total = cart.filter((line) => line.productId === id).reduce((sum, line) => sum + line.quantity, 0);
+        const variant = product.variants?.find((item) => item.id === variantId);
+        const variantTotal = cart.filter((line) => line.productId === id && line.variantId === variantId).reduce((sum, line) => sum + line.quantity, 0);
+        if (product.variants?.length && !variant) return "Hãy chọn biến thể sản phẩm.";
+        if (quantity < 1 || total + quantity > 20 || (variant ? variantTotal + quantity > variant.stock : total + quantity > (product.stock_quantity ?? 20))) return "Số lượng vượt quá hàng còn lại hoặc giới hạn giỏ hàng.";
+        addConfiguredProduct(product, optionIds, quantity, false, variantId);
+        if (buyNow) { dialogTriggerRef.current = trigger; setActivePanel("checkout"); } else setRetailCartView(true);
+        return null;
+      }} cartView={retailCartView} onExitCart={() => setRetailCartView(false)} renderCart={(openDetail) => <RetailCart lines={cartLines} cartCount={cartCount} subtotal={cartTotal} discount={promotionDiscount} appliedCode={promotionForCart?.code ?? null} promotionInput={promotionCodeInput} promotionFeedback={promotionFeedback} promotionStale={Boolean(appliedPromotion && !promotionForCart)} applying={isApplyingPromotion} acceptsOrders={acceptsOrders} recommendations={products.filter((product) => !cart.some((line) => line.productId === product.id))} onChange={changeQuantity} onPromotionInput={(value) => { setPromotionCodeInput(value); setAppliedPromotion(null); setPromotionFeedback(null); }} onApply={() => { void applyPromotion(); }} onClear={() => { setAppliedPromotion(null); setPromotionCodeInput(""); setPromotionFeedback(null); }} onContinue={() => { setRetailCartView(false); resetMenu(true); }} onCheckout={(trigger) => { dialogTriggerRef.current = trigger; setActivePanel("checkout"); }} onDetail={openDetail} />} cartQuantity={(id) => cart.filter((line) => line.productId === id).reduce((sum, line) => sum + line.quantity, 0)} /> : <>
       <header className="site-header">
         <h1 className="storefront-brand-heading">
           <a className="brand" href="#top" onClick={() => resetMenu(false)}>
@@ -831,6 +864,8 @@ export default function StorefrontClient({ store, categories, products, reviews,
 
       {cartCount > 0 && <button className="mobile-cart" type="button" style={{ order: 8 }} onClick={(event) => openCart(event.currentTarget)}><span>Giỏ hàng</span><b>{cartCount} món</b></button>}
 
+      </>}
+
       {activePanel && (
         <div className="dialog-backdrop" style={{ order: 9 }} onMouseDown={(event) => { if (event.target === event.currentTarget) closeOrderModal(); }}>
           <section
@@ -846,11 +881,11 @@ export default function StorefrontClient({ store, categories, products, reviews,
                 {activePanel !== "cart" && activePanel !== "customize" && <div className="eyebrow"><span>✳</span> {store.name.toLocaleUpperCase("vi-VN")}</div>}
                 <h2 id="dialog-title">
                   {activePanel === "cart" && "Giỏ hàng của bạn"}
-                  {activePanel === "checkout" && "Thông tin đặt món"}
+                  {activePanel === "checkout" && (isRetail ? "Thông tin đặt hàng" : "Thông tin đặt món")}
                   {activePanel === "success" && "Đơn hàng đã gửi"}
-                  {activePanel === "customize" && (customizingProduct?.optionGroups.length ? "Tùy chỉnh món" : "Thêm món vào giỏ")}
+                  {activePanel === "customize" && (customizingProduct?.optionGroups.length ? (isRetail ? "Tùy chọn sản phẩm" : "Tùy chỉnh món") : (isRetail ? "Thêm sản phẩm vào giỏ" : "Thêm món vào giỏ"))}
                 </h2>
-                {activePanel === "cart" && <p className="storefront-cart-count">{cartCount} món trong giỏ</p>}
+                {activePanel === "cart" && <p className="storefront-cart-count">{cartCount} {isRetail ? "sản phẩm" : "món"} trong giỏ</p>}
               </div>
               <button ref={dialogCloseRef} className="dialog-close" type="button" onClick={closeOrderModal} aria-label="Đóng">×</button>
             </div>
@@ -911,7 +946,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
                 <div className="product-picker-footer">
                   <div className="product-picker-quantity">
                     <span>Số lượng</span>
-                    <div className="quantity-control" role="group" aria-label="Số lượng món">
+                    <div className="quantity-control" role="group" aria-label={isRetail ? "Số lượng sản phẩm" : "Số lượng món"}>
                       <button type="button" onClick={() => changePickerQuantity(-1)} disabled={customizingQuantity <= 1} aria-label="Giảm số lượng">−</button>
                       <output>{customizingQuantity}</output>
                       <button type="button" onClick={() => changePickerQuantity(1)} disabled={customizingQuantity >= availablePickerQuantity} aria-label="Tăng số lượng">+</button>
@@ -934,7 +969,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
               <>
                 {cartLines.length > 0 ? (
                   <div className="storefront-cart-layout">
-                    <div className="cart-lines" aria-label="Món trong giỏ">
+                    <div className="cart-lines" aria-label={isRetail ? "Sản phẩm trong giỏ" : "Món trong giỏ"}>
                       {cartLines.map(({ id, product, quantity, unitPrice, optionLabels }) => {
                         const productQuantity = cart.filter((line) => line.productId === product.id).reduce((sum, line) => sum + line.quantity, 0);
                         return (
@@ -951,7 +986,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
                             </div>
                             <div className="storefront-cart-line-price">
                               <strong className="line-total">{formatPrice(unitPrice * quantity)}</strong>
-                              <small>{formatPrice(unitPrice)} / món</small>
+                              <small>{formatPrice(unitPrice)} / {isRetail ? "sản phẩm" : "món"}</small>
                               <button type="button" onClick={() => changeQuantity(id, -quantity)} aria-label={`Xóa ${product.name} khỏi giỏ`}>Xóa</button>
                             </div>
                           </article>
@@ -996,20 +1031,20 @@ export default function StorefrontClient({ store, categories, products, reviews,
                     </aside>
                   </div>
                 ) : (
-                  <div className="cart-empty"><span>▣</span><b>Giỏ hàng đang trống</b><p>Chọn vài món ngon để {store.name} chuẩn bị nhé.</p><button type="button" onClick={() => { closeOrderModal(); document.querySelector("#menu")?.scrollIntoView({ behavior: "smooth" }); }}>Xem thực đơn</button></div>
+                  <div className="cart-empty"><span>▣</span><b>Giỏ hàng đang trống</b><p>{isRetail ? "Chọn sản phẩm bạn yêu thích nhé." : `Chọn vài món ngon để ${store.name} chuẩn bị nhé.`}</p><button type="button" onClick={() => { closeOrderModal(); document.querySelector(isRetail ? "#retail-products" : "#menu")?.scrollIntoView({ behavior: "smooth" }); }}>{isRetail ? "Xem sản phẩm" : "Xem thực đơn"}</button></div>
                 )}
               </>
             )}
 
             {activePanel === "checkout" && (
               <form className="checkout-form" onSubmit={placeOrder}>
-                <button className="storefront-return-to-cart" type="button" onClick={() => { setOrderError(""); setActivePanel("cart"); }}>← Về giỏ hàng</button>
-                <div className="pickup-note"><span>{fulfillmentMethod === "delivery" ? "⌖" : "⌂"}</span><div><b>{fulfillmentMethod === "delivery" ? "Giao tận nơi" : "Nhận tại cửa hàng"}</b><small>{fulfillmentMethod === "delivery" ? `Cửa hàng giao trong bán kính ${formatDistance(store.delivery_radius_m)}.` : `${store.name} sẽ xác nhận đơn và thời gian nhận món.`}</small></div></div>
+                <button className="storefront-return-to-cart" type="button" onClick={() => { setOrderError(""); if (isRetail) { setActivePanel(null); setRetailCartView(true); } else setActivePanel("cart"); }}>← Về giỏ hàng</button>
+                <div className="pickup-note"><span>{fulfillmentMethod === "delivery" ? "⌖" : "⌂"}</span><div><b>{fulfillmentMethod === "delivery" ? "Giao tận nơi" : "Nhận tại cửa hàng"}</b><small>{fulfillmentMethod === "delivery" ? `Cửa hàng giao trong bán kính ${formatDistance(store.delivery_radius_m)}.` : `${store.name} sẽ xác nhận đơn và thời gian ${isRetail ? "nhận hàng" : "nhận món"}.`}</small></div></div>
                 <label>Họ và tên<input name="customerName" autoComplete="name" placeholder="Tên người nhận" required /></label>
                 <label>Số điện thoại<input name="customerPhone" type="tel" autoComplete="tel" inputMode="tel" pattern="[0-9+() .-]{9,16}" placeholder="Ví dụ: 090 123 4567" required /></label>
                 <label>Email nhận mã đơn<input name="customerEmail" type="email" autoComplete="email" maxLength={254} placeholder="ban@example.com" required /></label>
                 <fieldset className="payment-method-options fulfillment-options">
-                  <legend>Cách nhận món</legend>
+                  <legend>{isRetail ? "Cách nhận hàng" : "Cách nhận món"}</legend>
                   <label className={fulfillmentMethod === "pickup" ? "payment-method-option selected" : "payment-method-option"}>
                     <input type="radio" name="fulfillmentMethod" value="pickup" checked={fulfillmentMethod === "pickup"} onChange={() => changeFulfillmentMethod("pickup")} />
                     <span><b>Nhận tại cửa hàng</b><small>Không tính phí giao hàng.</small></span>
@@ -1034,12 +1069,12 @@ export default function StorefrontClient({ store, categories, products, reviews,
                     <p className="dashboard-help">Hãy cho phép trình duyệt truy cập vị trí tại điểm nhận hàng. Chúng tôi sẽ kiểm tra bán kính trước khi xác nhận đơn.</p>
                   </div>
                 )}
-                <label>Ghi chú cho quán <span className="optional-label">Không bắt buộc</span><textarea name="customerNote" rows={3} maxLength={500} placeholder="Ít cay, để riêng nước sốt..." /></label>
+                <label>{isRetail ? "Ghi chú cho cửa hàng" : "Ghi chú cho quán"} <span className="optional-label">Không bắt buộc</span><textarea name="customerNote" rows={3} maxLength={500} placeholder={isRetail ? "Ghi chú cho đơn hàng..." : "Ít cay, để riêng nước sốt..."} /></label>
                 <fieldset className="payment-method-options">
                   <legend>Phương thức thanh toán</legend>
                   <label className={paymentMethod === "cash_on_pickup" ? "payment-method-option selected" : "payment-method-option"}>
                     <input type="radio" name="paymentMethod" value="cash_on_pickup" checked={paymentMethod === "cash_on_pickup"} onChange={() => setPaymentMethod("cash_on_pickup")} />
-                    <span><b>{checkoutTotal <= 0 ? "Không cần thanh toán" : fulfillmentMethod === "delivery" ? "Tiền mặt khi nhận hàng" : "Tiền mặt khi nhận món"}</b><small>{checkoutTotal <= 0 ? "Mã khuyến mãi đã giảm toàn bộ tiền món." : fulfillmentMethod === "delivery" ? "Thanh toán trực tiếp với người giao hàng." : "Thanh toán trực tiếp tại cửa hàng."}</small></span>
+                    <span><b>{checkoutTotal <= 0 ? "Không cần thanh toán" : fulfillmentMethod === "delivery" ? "Tiền mặt khi nhận hàng" : (isRetail ? "Tiền mặt khi nhận hàng" : "Tiền mặt khi nhận món")}</b><small>{checkoutTotal <= 0 ? (isRetail ? "Mã khuyến mãi đã giảm toàn bộ tiền sản phẩm." : "Mã khuyến mãi đã giảm toàn bộ tiền món.") : fulfillmentMethod === "delivery" ? "Thanh toán trực tiếp với người giao hàng." : "Thanh toán trực tiếp tại cửa hàng."}</small></span>
                   </label>
                   {store.bankTransfer && (
                     <label className={paymentMethod === "bank_transfer" ? "payment-method-option selected" : "payment-method-option"}>
@@ -1049,12 +1084,12 @@ export default function StorefrontClient({ store, categories, products, reviews,
                   )}
                 </fieldset>
                 {orderError && <p className="order-error" role="alert">{orderError}</p>}
-                <div className="checkout-total"><span>Tạm tính · {cartCount} món</span><strong>{formatPrice(cartTotal)}</strong></div>
+                <div className="checkout-total"><span>Tạm tính · {cartCount} {isRetail ? "sản phẩm" : "món"}</span><strong>{formatPrice(cartTotal)}</strong></div>
                 {fulfillmentMethod === "delivery" && <div className="checkout-total delivery-fee-row"><span>Phí giao hàng</span><strong>{formatPrice(store.delivery_fee_vnd)}</strong></div>}
                 {promotionForCart && <div className="checkout-total promotion-discount-row"><span>Giảm giá · {promotionForCart.code}</span><strong>−{formatPrice(promotionForCart.discountVnd)}</strong></div>}
                 <div className="checkout-total grand-total"><span>Tổng thanh toán</span><strong>{formatPrice(checkoutTotal)}</strong></div>
-                <button className="primary-button checkout-button" type="submit" disabled={!acceptsOrders || isSubmittingOrder || isApplyingPromotion}>{isSubmittingOrder ? "Đang gửi đơn..." : isApplyingPromotion ? "Đang kiểm tra mã..." : "Đặt món và tạo đơn"}<span>→</span></button>
-                <p className="payment-note">{checkoutTotal <= 0 ? "Mã khuyến mãi đã giảm toàn bộ tiền món; bạn không còn khoản cần thanh toán." : `${fulfillmentMethod === "delivery" ? "Cửa hàng tự giao đơn đến địa chỉ của bạn." : "Nhận món tại cửa hàng."} · ${paymentMethod === "bank_transfer" ? "Thanh toán sẽ được tự xác nhận nếu cửa hàng đã kết nối; nếu chưa, cửa hàng sẽ xác nhận thủ công." : fulfillmentMethod === "delivery" ? "Thanh toán tiền mặt khi nhận hàng." : "Thanh toán tiền mặt khi nhận món."}`}</p>
+                <button className="primary-button checkout-button" type="submit" disabled={!acceptsOrders || isSubmittingOrder || isApplyingPromotion}>{isSubmittingOrder ? "Đang gửi đơn..." : isApplyingPromotion ? "Đang kiểm tra mã..." : (isRetail ? "Đặt hàng" : "Đặt món và tạo đơn")}<span>→</span></button>
+                <p className="payment-note">{checkoutTotal <= 0 ? (isRetail ? "Mã khuyến mãi đã giảm toàn bộ tiền sản phẩm; bạn không còn khoản cần thanh toán." : "Mã khuyến mãi đã giảm toàn bộ tiền món; bạn không còn khoản cần thanh toán.") : `${fulfillmentMethod === "delivery" ? "Cửa hàng tự giao đơn đến địa chỉ của bạn." : (isRetail ? "Nhận hàng tại cửa hàng." : "Nhận món tại cửa hàng.")} · ${paymentMethod === "bank_transfer" ? "Thanh toán sẽ được tự xác nhận nếu cửa hàng đã kết nối; nếu chưa, cửa hàng sẽ xác nhận thủ công." : fulfillmentMethod === "delivery" ? "Thanh toán tiền mặt khi nhận hàng." : (isRetail ? "Thanh toán tiền mặt khi nhận hàng." : "Thanh toán tiền mặt khi nhận món.")}`}</p>
               </form>
             )}
 

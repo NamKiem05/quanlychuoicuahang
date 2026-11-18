@@ -12,11 +12,12 @@ function subscribeMotionPreference(onChange: () => void) {
   return () => query.removeEventListener("change", onChange);
 }
 
-export default function StoreBannerSlideshow({ urls, storeName, href, onOpenMenu }: {
+export default function StoreBannerSlideshow({ urls, storeName, href, onOpenMenu, linkLabel }: {
   urls: string[];
   storeName: string;
   href?: string;
   onOpenMenu?: () => void;
+  linkLabel?: string;
 }) {
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -65,7 +66,7 @@ export default function StoreBannerSlideshow({ urls, storeName, href, onOpenMenu
             const Picture = href ? "a" : "div";
             return (
               <div className="store-banner-slide" key={url} aria-hidden={index !== active} inert={index !== active}>
-                <Picture className="store-banner-picture" href={href} onClick={onOpenMenu} aria-label={href ? `Xem thực đơn của ${storeName}` : undefined}>
+                <Picture className="store-banner-picture" href={href} onClick={onOpenMenu} aria-label={href ? (linkLabel ?? `Xem thực đơn của ${storeName}`) : undefined}>
                   <Image className="store-banner-backdrop" src={url} alt="" fill unoptimized />
                   <Image className="store-banner-image" src={url} alt={`Banner ${index + 1} của ${storeName}`} fill sizes="(max-width: 1400px) 100vw, 1340px" loading={index === 0 ? "eager" : "lazy"} unoptimized />
                 </Picture>

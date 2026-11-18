@@ -61,6 +61,8 @@ export default async function StorePage({ params }: StorePageProps) {
     { data: styleSettings },
     { data: planAllowsOrders },
     { data: bannerSettings },
+    { data: merchandiseMode },
+    { data: variantRows },
   ] = await Promise.all([
     supabase
       .from("categories")
@@ -91,6 +93,8 @@ export default async function StorePage({ params }: StorePageProps) {
     supabase.from("stores").select("storefront_style").eq("id", store.id).maybeSingle(),
     supabase.rpc("merchant_plan_allows_orders", { target_store: store.id }),
     supabase.from("stores").select("banner_urls").eq("id", store.id).maybeSingle(),
+    supabase.rpc("get_public_store_merchandise_mode", { target_store: store.id }),
+    supabase.rpc("get_public_product_variants", { target_store: store.id }),
   ]);
   const { data: categoryRows } = categoryResult.error?.code === "42703" || categoryResult.error?.code === "PGRST204"
     ? await supabase.from("categories").select("id, name").eq("store_id", store.id).eq("is_active", true).order("sort_order")
@@ -134,7 +138,9 @@ export default async function StorePage({ params }: StorePageProps) {
     id: product.id,
     name: product.name,
     description: product.description,
-    price: Number(product.price_vnd),
+    price: (variantRows ?? []).some((variant: { product_id: string }) => variant.product_id === product.id)
+      ? Math.min(...(variantRows ?? []).filter((variant: { product_id: string }) => variant.product_id === product.id).map((variant: { price_vnd: number }) => Number(variant.price_vnd)))
+      : Number(product.price_vnd),
     category: product.category_id
       ? categoryNameById.get(product.category_id) ?? "Chưa phân loại"
       : "Chưa phân loại",
@@ -142,6 +148,7 @@ export default async function StorePage({ params }: StorePageProps) {
     image: product.image_url ?? "",
     stock_quantity: product.stock_quantity,
     optionGroups: optionGroupsByProductId.get(product.id) ?? [],
+    variants: (variantRows ?? []).filter((variant: { product_id: string }) => variant.product_id === product.id).map((variant: { id: string; attributes: Record<string, string>; price_vnd: number; stock_quantity: number }) => ({ id: variant.id, attributes: variant.attributes, price: Number(variant.price_vnd), stock: variant.stock_quantity })),
   }));
   const reviews: StorefrontReview[] = (reviewRows ?? []).map((review) => ({
     id: review.id,
@@ -170,6 +177,7 @@ export default async function StorePage({ params }: StorePageProps) {
         orderHours: (schedule?.order_hours ?? null) as OrderHours | null,
         storefront_style: isStorefrontStyle(styleSettings?.storefront_style) ? styleSettings.storefront_style : "original",
       }}
+      merchandiseMode={merchandiseMode === "retail" ? "retail" : "general"}
       categories={categories}
       products={products}
       reviews={reviews}
