@@ -19,6 +19,17 @@ export type GhnCheckoutSnapshot = {
   height: number;
 };
 
+export function hasSignificantParcelChange(
+  expected: Pick<GhnCheckoutSnapshot, "weight" | "length" | "width" | "height">,
+  actual: Pick<GhnCheckoutSnapshot, "weight" | "length" | "width" | "height">,
+) {
+  const fields = ["weight", "length", "width", "height"] as const;
+  return fields.some((field) => {
+    const delta = Math.abs(actual[field] - expected[field]);
+    return delta >= (field === "weight" ? 100 : 2) && delta * 5 >= expected[field];
+  });
+}
+
 export function readDimensions(form: FormData, packaging = false): Dimensions | null | false {
   return parseDimensions(Object.fromEntries(dimensionFields.map(([key]) => [key, form.get(key)])), packaging);
 }

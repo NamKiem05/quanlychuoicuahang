@@ -33,6 +33,7 @@ export default function ShipmentForm({ storeId, orderId, provinces, locationsErr
   const submitting = useRef(false);
   const [result, setResult] = useState<Result | null>(null);
   const [preview, setPreview] = useState(false);
+  const [parcelConfirmed, setParcelConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [province, setProvince] = useState(previous?.to_province_name ?? "");
   const [ward, setWard] = useState(previous?.to_ward_name ?? "");
@@ -66,7 +67,7 @@ export default function ShipmentForm({ storeId, orderId, provinces, locationsErr
     if (submitting.current) return;
     const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
     const create = submitter?.value === "create";
-    if (create && !preview && !pending) return;
+    if (create && !pending && (!preview || (result?.requiresParcelConfirmation && !parcelConfirmed))) return;
     const values = new FormData(event.currentTarget);
     submitting.current = true;
     setBusy(true);
@@ -87,7 +88,7 @@ export default function ShipmentForm({ storeId, orderId, provinces, locationsErr
   }
 
   return (
-    <form className="ghn-shipment-form" onSubmit={run} onChange={() => { setPreview(false); setResult(null); }}>
+    <form className="ghn-shipment-form" onSubmit={run}>
       <input type="hidden" name="__active_store_id" value={storeId} />
       <input type="hidden" name="order_id" value={orderId} />
       {pending && <p className="ghn-shipment-warning">Lần gửi trước chưa được xác nhận. Dùng lại kiện đã lưu để tránh tạo trùng vận đơn.</p>}
@@ -99,7 +100,11 @@ export default function ShipmentForm({ storeId, orderId, provinces, locationsErr
       )}
       <h2>Kiện đóng gói thực tế</h2>
       <p>1 kiện · Cân và đo kiện sau khi đóng gói, rồi kiểm tra phí trước khi tạo vận đơn.</p>
-      <fieldset className="ghn-actual-package" disabled={busy}>
+      <fieldset className="ghn-actual-package" disabled={busy} onChange={() => {
+        setPreview(false);
+        setResult(null);
+        setParcelConfirmed(false);
+      }}>
         <div className="ghn-shipment-fields">
           {!quote && (
             <>
@@ -144,9 +149,18 @@ export default function ShipmentForm({ storeId, orderId, provinces, locationsErr
           )}
         </div>
       )}
+      {result?.requiresParcelConfirmation && !pending && (
+        <div className="ghn-shipment-warning">
+          <p>Số đo thực tế chênh đáng kể so với kiện dự kiến tại checkout. Hãy kiểm tra lại số đo.</p>
+          <label>
+            <input type="checkbox" name="confirm_parcel_change" value="yes" checked={parcelConfirmed} disabled={busy}
+              onChange={(event) => setParcelConfirmed(event.target.checked)} /> Tôi đã cân đo lại và xác nhận số đo này.
+          </label>
+        </div>
+      )}
       <div className="ghn-shipment-actions">
         <button type="submit" name="action" value="preview" disabled={busy || loadingWards}>Xem phí kiện thực tế</button>
-        <button type="submit" name="action" value="create" disabled={busy || loadingWards || (!preview && !pending)}>
+        <button type="submit" name="action" value="create" disabled={busy || loadingWards || (!pending && (!preview || (result?.requiresParcelConfirmation && !parcelConfirmed)))}>
           {busy ? "Đang xử lý…" : pending ? "Kiểm tra / gửi lại" : "Tạo vận đơn thử nghiệm"}
         </button>
       </div>

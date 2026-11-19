@@ -3,12 +3,17 @@ import { getMerchantContext } from "@/app/dashboard/data";
 import { requireExpectedStore } from "@/lib/active-store";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptGhnToken,ghnShipmentRequest,ghnLocations,type GhnShipmentPayload } from "@/lib/shipping/ghn";
-import type { GhnCheckoutSnapshot } from "@/lib/shipping/packaging";
+import { hasSignificantParcelChange, type GhnCheckoutSnapshot } from "@/lib/shipping/packaging";
 import { syncGhnStatus } from "@/lib/shipping/sync-ghn-status";
 import { revalidatePath } from "next/cache";
 
-type Result={ok:boolean;message:string;fee?:number;orderCode?:string;expected?:string|null};
+type Result={ok:boolean;message:string;fee?:number;orderCode?:string;expected?:string|null;requiresParcelConfirmation?:boolean};
 function canonical(value:unknown):string { return JSON.stringify(value, (_key, item:unknown) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))) : item); }
+function matchesSavedRequest(saved: GhnShipmentPayload & { parcel_confirmation?: unknown }, request: GhnShipmentPayload) {
+  const providerPayload = { ...saved };
+  delete providerPayload.parcel_confirmation;
+  return canonical(providerPayload) === canonical(request);
+}
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function syncShipmentStatus(_previous: Result, form: FormData): Promise<Result> {
@@ -75,17 +80,43 @@ function payload(form:FormData,order:{id:string;customer_name:string;customer_ph
   return {client_order_code:`GD-${order.id}`,to_name:order.customer_name,to_phone:order.customer_phone,to_address:order.delivery_address,to_province_name:province,to_ward_name:ward,is_new_to_address:true,weight,length,width,height,service_type_id:2,payment_type_id:1,required_note:"KHONGCHOXEMHANG",cod_amount:cod,content:"Hàng hóa theo đơn GrowDesk"};
 }
 function friendly(error:unknown):Result {const code=error instanceof Error?error.message:"";if(code==="PAYMENT_UNCONFIRMED")return {ok:false,message:"Đơn chuyển khoản phải được xác nhận thanh toán trước khi tạo vận đơn."};if(code==="INVALID_PACKAGE")return {ok:false,message:"Kiểm tra kích thước và khối lượng (dưới 20 kg)."};if(code==="INVALID_ADDRESS")return {ok:false,message:"Hãy nhập tỉnh, phường/xã và kiểm tra địa chỉ nhận hàng của đơn."};if(code==="INVALID_COD")return {ok:false,message:"Số tiền thu hộ không hợp lệ hoặc vượt giới hạn GHN."};if(code==="ORDER_NOT_ELIGIBLE")return {ok:false,message:"Đơn phải là đơn giao hàng đã xác nhận, đang chuẩn bị hoặc sẵn sàng và không có yêu cầu hủy."};if(code==="NO_CONNECTION")return {ok:false,message:"Hãy kết nối GHN thử nghiệm trước."};return err(error);}
-export async function previewShipment(form:FormData):Promise<Result> {try{const x=await context(form);const request=payload(form,x.order,x.quote);const result=await ghnShipmentRequest(x.token,Number(x.connection.shop_id),"preview",request);return {ok:true,message:"Đã lấy phí dự kiến từ GHN thử nghiệm.",fee:result.totalFee,expected:result.expectedDelivery};}catch(e){return friendly(e);}}
+export async function previewShipment(form: FormData): Promise<Result> {
+  try {
+    const x = await context(form);
+    const request = payload(form, x.order, x.quote);
+    const result = await ghnShipmentRequest(x.token, Number(x.connection.shop_id), "preview", request);
+    return {
+      ok: true, message: "Đã lấy phí dự kiến từ GHN thử nghiệm.", fee: result.totalFee,
+      expected: result.expectedDelivery, requiresParcelConfirmation: Boolean(x.quote && hasSignificantParcelChange(x.quote, request)),
+    };
+  } catch (error) { return friendly(error); }
+}
 export async function createShipment(form:FormData):Promise<Result> {
   try {
     const x=await context(form);const request=payload(form,x.order,x.quote);const shop=Number(x.connection.shop_id);
     const {data:existing,error:readError}=await x.admin.from("store_ghn_shipments").select("order_id,shop_id,request_payload,state,order_code,total_fee").eq("order_id",x.order.id).eq("store_id",x.store.id).maybeSingle();if(readError)throw readError;
     if(existing?.state==="created")return {ok:true,message:"Đơn đã có vận đơn GHN thử nghiệm.",orderCode:existing.order_code,fee:Number(existing.total_fee)};
-    if(existing && (Number(existing.shop_id)!==shop || canonical(existing.request_payload)!==canonical(request))) return {ok:false,message:"Yêu cầu trước đang chờ xác nhận. Hãy dùng lại đúng thông tin ban đầu để tránh tạo trùng vận đơn."};
-    if(!existing){await ghnShipmentRequest(x.token,shop,"preview",request);const {error:insertError}=await x.admin.from("store_ghn_shipments").insert({order_id:x.order.id,store_id:x.store.id,shop_id:shop,client_order_code:request.client_order_code,request_payload:request});if(insertError && insertError.code!=="23505")throw insertError;}
+    if(existing && (Number(existing.shop_id)!==shop || !matchesSavedRequest(existing.request_payload, request))) return {ok:false,message:"Yêu cầu trước đang chờ xác nhận. Hãy dùng lại đúng thông tin ban đầu để tránh tạo trùng vận đơn."};
+    if (!existing) {
+      const significantChange = Boolean(x.quote && hasSignificantParcelChange(x.quote, request));
+      if (significantChange && form.get("confirm_parcel_change") !== "yes") {
+        return { ok: false, message: "Hãy xác nhận lại số đo kiện trước khi tạo vận đơn.", requiresParcelConfirmation: true };
+      }
+      await ghnShipmentRequest(x.token, shop, "preview", request);
+      const { error: insertError } = await x.admin.from("store_ghn_shipments").insert({
+        order_id: x.order.id, store_id: x.store.id, shop_id: shop, client_order_code: request.client_order_code,
+        request_payload: {
+          ...request,
+          parcel_confirmation: {
+            confirmed_by: x.ctx.userId, confirmed_at: new Date().toISOString(), significant_change: significantChange,
+          },
+        },
+      });
+      if (insertError && insertError.code !== "23505") throw insertError;
+    }
     const {data:reserved,error:reserveError}=await x.admin.from("store_ghn_shipments").select("request_payload,state,order_code,total_fee,shop_id").eq("order_id",x.order.id).eq("store_id",x.store.id).maybeSingle();if(reserveError||!reserved)throw new Error("RESERVE_FAILED");
     if(reserved.state==="created")return {ok:true,message:"Đơn đã có vận đơn GHN thử nghiệm.",orderCode:reserved.order_code,fee:Number(reserved.total_fee)};
-    if(Number(reserved.shop_id)!==shop || canonical(reserved.request_payload)!==canonical(request))return {ok:false,message:"Yêu cầu trước đang chờ xác nhận. Hãy dùng lại đúng thông tin ban đầu để tránh tạo trùng vận đơn."};
+    if(Number(reserved.shop_id)!==shop || !matchesSavedRequest(reserved.request_payload, request))return {ok:false,message:"Yêu cầu trước đang chờ xác nhận. Hãy dùng lại đúng thông tin ban đầu để tránh tạo trùng vận đơn."};
     const now=new Date(), lease=new Date(now.getTime()+60000).toISOString();
     const {data:claim,error:claimError}=await x.admin.from("store_ghn_shipments").update({lease_until:lease}).eq("order_id",x.order.id).eq("store_id",x.store.id).eq("state","pending").or(`lease_until.is.null,lease_until.lt.${now.toISOString()}`).select("order_id").maybeSingle();
     if(claimError)throw claimError;if(!claim)return {ok:false,message:"Vận đơn đang được xử lý. Hãy đợi một phút rồi kiểm tra lại."};
