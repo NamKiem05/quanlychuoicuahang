@@ -33,22 +33,37 @@ export async function POST(request: Request) {
       .eq("status", "active").eq("accepts_orders", true).eq("delivery_enabled", true).maybeSingle();
     if (store.error || !store.data) return unavailable("Cửa hàng chưa nhận đơn giao tận nơi.", 404);
     const storeId = store.data.id;
-    const [connection, packaging, products] = await Promise.all([
+    const variantIds = [...new Set(items.flatMap((item) => item.variant_id ? [item.variant_id] : []))];
+    const [connection, packaging, products, variants] = await Promise.all([
       admin.from("store_ghn_connections").select("shop_id,token_ciphertext").eq("store_id", storeId).eq("environment", "staging").maybeSingle(),
       admin.from("store_ghn_packaging").select("kind,packing_rule,weight_g,length_cm,width_cm,height_cm").eq("store_id", storeId).maybeSingle(),
-      admin.from("products").select("id,shipping_dimensions").eq("store_id", storeId).eq("status", "active")
+      admin.from("products").select("id,shipping_dimensions,variants_enabled").eq("store_id", storeId).eq("status", "active")
         .in("id", [...new Set(items.map((item) => item.product_id))]),
+      variantIds.length
+        ? admin.from("product_variant_drafts").select("id,product_id,shipping_dimensions")
+          .eq("store_id", storeId).in("id", variantIds)
+        : { data: [], error: null },
     ]);
-    if (connection.error || packaging.error || products.error || !connection.data || !packaging.data) {
+    if (connection.error || packaging.error || products.error || variants.error || !connection.data || !packaging.data) {
       return unavailable("Cửa hàng chưa sẵn sàng báo phí GHN.", 503);
     }
 
-    const dimensionsByProduct = new Map(products.data.map((item) => [item.id, item.shipping_dimensions as Dimensions | null]));
+    const productsById = new Map(products.data.map((item) => [item.id, item]));
+    const variantsById = new Map(variants.data.map((item) => [item.id, item]));
     const parcelItems = [];
     for (const item of items) {
-      const dimensions = dimensionsByProduct.get(item.product_id);
+      const product = productsById.get(item.product_id);
+      const variant = item.variant_id ? variantsById.get(item.variant_id) : undefined;
+      if (!product || (product.variants_enabled
+        ? variant?.product_id !== product.id
+        : item.variant_id !== undefined)) {
+        return unavailable("Sản phẩm hoặc biến thể đã thay đổi. Hãy chọn lại trong giỏ hàng.");
+      }
+      const dimensions = (product.variants_enabled ? variant?.shipping_dimensions : product.shipping_dimensions) as Dimensions | null;
       if (!dimensions || dimensionFields.some(([key, , max]) => !Number.isInteger(dimensions[key]) || dimensions[key] < 1 || dimensions[key] > max)) {
-        return unavailable("Có sản phẩm chưa được cửa hàng khai báo thông số vận chuyển.");
+        return unavailable(product.variants_enabled
+          ? "Có biến thể chưa được cửa hàng khai báo thông số vận chuyển."
+          : "Có sản phẩm chưa được cửa hàng khai báo thông số vận chuyển.");
       }
       parcelItems.push({ dimensions, quantity: item.quantity });
     }

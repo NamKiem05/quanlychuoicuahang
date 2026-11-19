@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getMerchantContext } from "@/app/dashboard/data";
+import { readDimensions } from "@/lib/shipping/packaging";
 import { requireExpectedStore } from "@/lib/active-store";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function context(form: FormData) {
@@ -24,6 +25,8 @@ export async function createVariants(form: FormData) {
   const ctx = await context(form);
   const raw = String(form.get("attributes") ?? "").trim();
   const price = number(form, "price", 1000000000), stock = number(form, "stock", 10000000);
+  const dimensions = readDimensions(form);
+  if (dimensions === false) finish(ctx.product, "invalid-shipping");
   if (!raw || raw.length > 2000 || price === null || stock === null) finish(ctx.product, "invalid");
   const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (!lines.length || lines.length > 4) finish(ctx.product, "invalid");
@@ -39,17 +42,19 @@ export async function createVariants(form: FormData) {
     if (combinations.length * values.length > 80) finish(ctx.product, "too-many");
     combinations = combinations.flatMap((item) => values.map((value) => ({ ...item, [name]: value })));
   }
-  const result = await ctx.supabase.from("product_variant_drafts").insert(combinations.map((attributes) => ({ store_id: ctx.store.id, product_id: ctx.product, attributes, price_vnd: price, stock_quantity: stock })));
+  const result = await ctx.supabase.from("product_variant_drafts").insert(combinations.map((attributes) => ({ store_id: ctx.store.id, product_id: ctx.product, attributes, price_vnd: price, stock_quantity: stock, ...(dimensions ? { shipping_dimensions: dimensions } : {}) })));
   if (result.error) finish(ctx.product, result.error.code === "23505" ? "duplicate" : "failed");
   finish(ctx.product, "created");
 }
 export async function updateVariant(form: FormData) {
   const ctx = await context(form), id = String(form.get("variant_id") ?? ""), sku = String(form.get("sku") ?? "").trim();
   const price = number(form, "price", 1000000000), stock = number(form, "stock", 10000000);
+  const dimensions = readDimensions(form);
+  if (dimensions === false) finish(ctx.product, "invalid-shipping");
   const costText = String(form.get("cost") ?? "").trim();
   const cost = costText === "" ? null : number(form, "cost", 1000000000);
   if (!uuid.test(id) || sku.length > 100 || price === null || stock === null || (costText !== "" && cost === null)) finish(ctx.product, "invalid");
-  const result = await ctx.supabase.from("product_variant_drafts").update({ sku: sku || null, price_vnd: price, cost_vnd: cost, stock_quantity: stock, updated_at: new Date().toISOString() }).eq("id", id).eq("product_id", ctx.product).eq("store_id", ctx.store.id).select("id").maybeSingle();
+  const result = await ctx.supabase.from("product_variant_drafts").update({ sku: sku || null, price_vnd: price, cost_vnd: cost, stock_quantity: stock, ...(form.has("weight_g") ? { shipping_dimensions: dimensions } : {}), updated_at: new Date().toISOString() }).eq("id", id).eq("product_id", ctx.product).eq("store_id", ctx.store.id).select("id").maybeSingle();
   if (result.error || !result.data) finish(ctx.product, result.error?.code === "23505" ? "sku-duplicate" : "failed");
   finish(ctx.product, "updated");
 }

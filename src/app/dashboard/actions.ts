@@ -1,6 +1,6 @@
 "use server";
 
-import { readDimensions } from "@/lib/shipping/packaging";
+import { parseDimensions, readDimensions } from "@/lib/shipping/packaging";
 
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -692,7 +692,15 @@ export async function createProduct(formData: FormData) {
     let variants: unknown;
     try { variants = JSON.parse(variantsText); } catch { redirect("/dashboard/menu?message=invalid-variants"); }
     if (!Array.isArray(variants) || variants.length < 1 || variants.length > 80 || variantsText.length > 100000) redirect("/dashboard/menu?message=invalid-variants");
-    const result = await supabase.rpc(shipping ? "create_product_with_shipping_variant_drafts" : "create_product_with_variant_drafts", { target_store: storeId, product_name: name, product_slug: slug, product_category: categoryId || null, product_brand: brandId || null, product_description: description, product_image: imageUrl || null, product_price: priceVnd, product_low_stock: lowStockThreshold ?? 5, requested_variants: variants, ...(shipping ? { product_shipping: shipping } : {}) });
+    const configuredVariants = [];
+    for (const variant of variants) {
+      if (!variant || typeof variant !== "object") redirect("/dashboard/menu?message=invalid-variants");
+      const dimensions = parseDimensions(variant.shipping_dimensions);
+      if (dimensions === false) redirect("/dashboard/menu?message=invalid-product");
+      configuredVariants.push({ ...variant, shipping_dimensions: dimensions });
+    }
+    const result = await supabase.rpc(configuredVariants.some((variant) => variant.shipping_dimensions)
+      ? "create_product_with_variant_shipping" : "create_product_with_variant_drafts", { target_store: storeId, product_name: name, product_slug: slug, product_category: categoryId || null, product_brand: brandId || null, product_description: description, product_image: imageUrl || null, product_price: priceVnd, product_low_stock: lowStockThreshold ?? 5, requested_variants: configuredVariants });
     if (result.error) { await removeOwnedProductImage(supabase, imageUrl, storeId); redirect("/dashboard/menu?message=variant-create-failed"); }
     redirect("/dashboard/menu?message=variant-product-created");
   }

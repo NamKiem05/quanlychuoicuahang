@@ -18,7 +18,14 @@ export type GhnCheckoutSnapshot = {
 };
 
 export function readDimensions(form: FormData, packaging = false): Dimensions | null | false {
-  const values = dimensionFields.map(([key]) => String(form.get(key) ?? "").trim());
+  return parseDimensions(Object.fromEntries(dimensionFields.map(([key]) => [key, form.get(key)])), packaging);
+}
+
+export function parseDimensions(input: unknown, packaging = false): Dimensions | null | false {
+  if (input == null) return null;
+  if (typeof input !== "object" || Array.isArray(input)) return false;
+  const fields = input as Record<string, unknown>;
+  const values = dimensionFields.map(([key]) => String(fields[key] ?? "").trim());
   if (values.every((value) => !value)) return null;
 
   const [weight_g, length_cm, width_cm, height_cm] = values.map(Number);
