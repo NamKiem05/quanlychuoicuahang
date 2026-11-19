@@ -11,21 +11,38 @@ type Result = { ok:boolean; message:string };
 export async function saveGhnPackaging(_previous: Result, form: FormData): Promise<Result> {
   const store = await authorized(form);
   if (!store) return { ok: false, message: "Chỉ chủ cửa hàng được cấu hình đóng gói." };
+  const id = String(form.get("packaging_id") ?? "");
+  if (id && !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id)) {
+    return { ok: false, message: "Không tìm thấy bao bì." };
+  }
+  const removing = form.get("intent") === "delete";
+  const name = String(form.get("name") ?? "").trim();
   const dimensions = readDimensions(form, true);
   const kind = form.get("kind");
   const packingRule = form.get("packing_rule");
-  if (!dimensions || (kind !== "box" && kind !== "bag") || (packingRule !== "single" && packingRule !== "stack")) {
-    return { ok: false, message: "Kiểm tra loại bao bì, bốn thông số và quy tắc đóng gói." };
-  }
   try {
-    const { error } = await createAdminClient().from("store_ghn_packaging").upsert({
-      store_id: store.id, kind, packing_rule: packingRule, ...dimensions,
-    });
-    if (error) throw error;
+    const packages = createAdminClient().from("store_ghn_packaging");
+    if (removing) {
+      if (!id) return { ok: false, message: "Không tìm thấy bao bì." };
+      const { data, error } = await packages.delete().eq("id", id).eq("store_id", store.id).select("id").maybeSingle();
+      if (error || !data) throw new Error("Packaging unavailable");
+    } else {
+      if (!name || name.length > 80 || !dimensions || (kind !== "box" && kind !== "bag") ||
+        (packingRule !== "single" && packingRule !== "stack")) {
+        return { ok: false, message: "Kiểm tra tên bao bì, bốn thông số và quy tắc đóng gói." };
+      }
+      const values = { name, kind, packing_rule: packingRule, ...dimensions };
+      const result = id
+        ? await packages.update(values).eq("id", id).eq("store_id", store.id).select("id").maybeSingle()
+        : await packages.insert({ ...values, store_id: store.id }).select("id").single();
+      if (result.error || !result.data) throw new Error("Packaging unavailable");
+    }
     revalidatePath("/dashboard/shipping");
-    return { ok: true, message: "Đã lưu cấu hình đóng gói." };
+    revalidatePath(`/${store.slug}`);
+    revalidatePath(`/store-host/${store.slug}`);
+    return { ok: true, message: removing ? "Đã xóa bao bì." : "Đã lưu bao bì." };
   } catch {
-    return { ok: false, message: "Chưa lưu được cấu hình đóng gói." };
+    return { ok: false, message: removing ? "Chưa xóa được bao bì." : "Chưa lưu được bao bì." };
   }
 }
 async function authorized(form:FormData) {

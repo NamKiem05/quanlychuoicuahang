@@ -7,7 +7,9 @@ export const dimensionFields = [
 
 export type Dimensions = Record<(typeof dimensionFields)[number][0], number>;
 export type Packaging = Dimensions & { kind: "box" | "bag"; packing_rule: "single" | "stack" };
+export type PackagingProfile = Packaging & { id: string; name: string };
 export type GhnCheckoutSnapshot = {
+  packaging_name?: string;
   shop_id: number;
   province: string;
   ward: string;
@@ -36,12 +38,17 @@ export function parseDimensions(input: unknown, packaging = false): Dimensions |
   return { weight_g, length_cm, width_cm, height_cm };
 }
 
-export function packItems(packaging: Packaging, items: { dimensions: Dimensions; quantity: number }[]) {
+type ParcelItem = { dimensions: Dimensions; quantity: number };
+
+function packItems(packaging: Packaging, items: ParcelItem[]) {
   let weight = packaging.weight_g;
   let height = 0;
   let units = 0;
   for (const { dimensions, quantity } of items) {
-    if (dimensions.length_cm > packaging.length_cm || dimensions.width_cm > packaging.width_cm) return null;
+    const fitsBase =
+      (dimensions.length_cm <= packaging.length_cm && dimensions.width_cm <= packaging.width_cm) ||
+      (dimensions.width_cm <= packaging.length_cm && dimensions.length_cm <= packaging.width_cm);
+    if (!fitsBase) return null;
     weight += dimensions.weight_g * quantity;
     height += dimensions.height_cm * quantity;
     units += quantity;
@@ -50,4 +57,15 @@ export function packItems(packaging: Packaging, items: { dimensions: Dimensions;
     weight >= 20000 || height > packaging.height_cm) return null;
 
   return { weight, length: packaging.length_cm, width: packaging.width_cm, height: packaging.height_cm };
+}
+
+export function choosePackaging(profiles: PackagingProfile[], items: ParcelItem[]) {
+  const volume = (p: PackagingProfile) => p.length_cm * p.width_cm * p.height_cm;
+  const candidates = [...profiles].sort((a, b) =>
+    volume(a) - volume(b) || a.weight_g - b.weight_g || a.id.localeCompare(b.id));
+  for (const profile of candidates) {
+    const parcel = packItems(profile, items);
+    if (parcel) return { profile, parcel };
+  }
+  return null;
 }

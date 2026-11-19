@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptGhnToken, ghnLocations, ghnShipmentRequest } from "@/lib/shipping/ghn";
-import { dimensionFields, packItems, type Dimensions, type Packaging } from "@/lib/shipping/packaging";
+import { choosePackaging, dimensionFields, type Dimensions, type PackagingProfile } from "@/lib/shipping/packaging";
 import provinces from "@/lib/vietnam-checkout-addresses.json";
 
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     const variantIds = [...new Set(items.flatMap((item) => item.variant_id ? [item.variant_id] : []))];
     const [connection, packaging, products, variants] = await Promise.all([
       admin.from("store_ghn_connections").select("shop_id,token_ciphertext").eq("store_id", storeId).eq("environment", "staging").maybeSingle(),
-      admin.from("store_ghn_packaging").select("kind,packing_rule,weight_g,length_cm,width_cm,height_cm").eq("store_id", storeId).maybeSingle(),
+      admin.from("store_ghn_packaging").select("id,name,kind,packing_rule,weight_g,length_cm,width_cm,height_cm").eq("store_id", storeId),
       admin.from("products").select("id,shipping_dimensions,variants_enabled").eq("store_id", storeId).eq("status", "active")
         .in("id", [...new Set(items.map((item) => item.product_id))]),
       variantIds.length
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
           .eq("store_id", storeId).in("id", variantIds)
         : { data: [], error: null },
     ]);
-    if (connection.error || packaging.error || products.error || variants.error || !connection.data || !packaging.data) {
+    if (connection.error || packaging.error || products.error || variants.error || !connection.data || !packaging.data.length) {
       return unavailable("Cửa hàng chưa sẵn sàng báo phí GHN.", 503);
     }
 
@@ -67,8 +67,9 @@ export async function POST(request: Request) {
       }
       parcelItems.push({ dimensions, quantity: item.quantity });
     }
-    const parcel = packItems(packaging.data as Packaging, parcelItems);
-    if (!parcel) return unavailable("Giỏ hàng không vừa một kiện GHN theo quy cách của cửa hàng.");
+    const packed = choosePackaging(packaging.data as PackagingProfile[], parcelItems);
+    if (!packed) return unavailable("Giỏ hàng vượt kích thước hoặc khối lượng của các bao bì GHN hiện có. Hãy giảm số lượng hoặc chia thành nhiều đơn.");
+    const { parcel, profile } = packed;
 
     const shopId = Number(connection.data.shop_id);
     const token = decryptGhnToken(connection.data.token_ciphertext, storeId);
@@ -91,6 +92,7 @@ export async function POST(request: Request) {
       snapshot: {
         provider: "ghn", environment: "staging", shop_id: shopId, service_type_id: 2,
         province: ghnProvince.name, ward: ghnWard.name, ...parcel, eta: result.expectedDelivery,
+        packaging_id: profile.id, packaging_name: profile.name,
       },
     }).select("id,expires_at").single();
     if (error || !data) throw new Error("Quote could not be saved");
