@@ -1,74 +1,12 @@
 import "server-only";
 import { applicationMailer } from "./smtp";
 
-export type OrderStatusNotice =
-  | "confirmed"
-  | "preparing"
-  | "rejected"
-  | "ready"
-  | "out_for_delivery"
-  | "completed"
-  | "cancelled"
-  | "cancellation_request_declined"
-  | "payment_confirmed";
-
 type OrderNoticeDetails = {
   customerEmail: string | null;
   customerName: string;
   storeName: string;
   publicCode: string;
   totalVnd: number;
-  fulfillment: "pickup" | "delivery";
-};
-
-const notices: Record<OrderStatusNotice, { subject: string; title: string; message: (details: OrderNoticeDetails) => string }> = {
-  confirmed: {
-    subject: "Cửa hàng đã xác nhận đơn hàng",
-    title: "Đơn hàng đã được xác nhận",
-    message: ({ storeName }) => `${storeName} đã xác nhận và sẽ bắt đầu chuẩn bị đơn hàng của bạn.`,
-  },
-  preparing: {
-    subject: "Cửa hàng đang chuẩn bị đơn hàng",
-    title: "Đơn hàng đang được chuẩn bị",
-    message: ({ storeName }) => `${storeName} đang chuẩn bị đơn hàng của bạn.`,
-  },
-  rejected: {
-    subject: "Cửa hàng chưa thể nhận đơn hàng",
-    title: "Cửa hàng chưa thể nhận đơn",
-    message: ({ storeName }) => `${storeName} hiện chưa thể nhận đơn hàng này. Vui lòng liên hệ cửa hàng nếu bạn cần hỗ trợ.`,
-  },
-  ready: {
-    subject: "Đơn hàng đã sẵn sàng",
-    title: "Đơn hàng đã sẵn sàng",
-    message: ({ storeName, fulfillment }) => fulfillment === "delivery"
-      ? `${storeName} đã chuẩn bị xong đơn hàng và sẽ sớm giao cho bạn.`
-      : `${storeName} đã chuẩn bị xong. Bạn có thể đến cửa hàng nhận hàng.`,
-  },
-  out_for_delivery: {
-    subject: "Đơn hàng đang được giao",
-    title: "Đơn hàng đang trên đường đến",
-    message: ({ storeName }) => `${storeName} đã bắt đầu giao đơn hàng đến địa chỉ của bạn.`,
-  },
-  completed: {
-    subject: "Đơn hàng đã hoàn tất",
-    title: "Đơn hàng đã hoàn tất",
-    message: ({ storeName }) => `Đơn hàng từ ${storeName} đã được hoàn tất. Cảm ơn bạn đã đặt hàng!`,
-  },
-  cancelled: {
-    subject: "Đơn hàng đã được hủy",
-    title: "Đơn hàng đã được hủy",
-    message: ({ storeName }) => `Đơn hàng tại ${storeName} đã được hủy. Vui lòng liên hệ cửa hàng nếu bạn cần hỗ trợ.`,
-  },
-  cancellation_request_declined: {
-    subject: "Cửa hàng chưa chấp nhận yêu cầu hủy",
-    title: "Yêu cầu hủy đơn chưa được chấp nhận",
-    message: ({ storeName }) => `${storeName} chưa chấp nhận yêu cầu hủy đơn. Vui lòng liên hệ cửa hàng nếu bạn cần hỗ trợ, đặc biệt nếu bạn đã chuyển khoản.`,
-  },
-  payment_confirmed: {
-    subject: "Cửa hàng đã xác nhận thanh toán",
-    title: "Thanh toán đã được xác nhận",
-    message: ({ storeName }) => `${storeName} đã xác nhận nhận được khoản thanh toán cho đơn hàng của bạn.`,
-  },
 };
 
 function escapeHtml(value: string) {
@@ -86,28 +24,25 @@ function formatPrice(value: number) {
   return `${value.toLocaleString("vi-VN")}₫`;
 }
 
-export async function sendOrderStatusNotice(
-  details: OrderNoticeDetails,
-  noticeType: OrderStatusNotice,
-) {
+export async function sendOrderCompletionNotice(details: OrderNoticeDetails) {
   if (!details.customerEmail) return false;
 
   try {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3000";
     const trackingUrl = new URL("/track-order", appUrl).toString();
-    const notice = notices[noticeType];
+    const subject = "Đơn hàng đã hoàn tất";
     const customerName = escapeHtml(details.customerName);
     const storeName = escapeHtml(details.storeName);
     const publicCode = escapeHtml(details.publicCode);
-    const message = escapeHtml(notice.message(details));
+    const message = `Đơn hàng từ ${details.storeName} đã được hoàn tất. Cảm ơn bạn đã đặt hàng!`;
     const total = formatPrice(details.totalVnd);
     const safeTrackingUrl = escapeHtml(trackingUrl);
     const html = `
       <div style="margin:0;padding:32px 12px;background:#f6f9f4;font-family:Arial,sans-serif;color:#245c37">
         <div style="max-width:560px;margin:0 auto;padding:30px;border:1px solid #e2e9e0;border-radius:16px;background:#ffffff">
           <p style="margin:0 0 10px;color:#2f8045;font-size:12px;font-weight:bold;letter-spacing:1px">CẬP NHẬT ĐƠN HÀNG</p>
-          <h1 style="margin:0 0 12px;font-size:24px">${notice.title}</h1>
-          <p style="margin:0 0 22px;color:#687166;line-height:1.6">Xin chào ${customerName}, ${message}</p>
+          <h1 style="margin:0 0 12px;font-size:24px">${subject}</h1>
+          <p style="margin:0 0 22px;color:#687166;line-height:1.6">Xin chào ${customerName}, ${escapeHtml(message)}</p>
           <div style="padding:18px;border-radius:12px;background:#f2f7f0">
             <p style="margin:0 0 8px;color:#7a8178;font-size:12px">MÃ ĐƠN HÀNG</p>
             <p style="margin:0;color:#245c37;font-size:22px;font-weight:bold;letter-spacing:1px">${publicCode}</p>
@@ -120,7 +55,7 @@ export async function sendOrderStatusNotice(
       </div>`;
     const text = [
       `Xin chào ${details.customerName},`,
-      notice.message(details),
+      message,
       `Mã đơn hàng: ${details.publicCode}`,
       `Tổng tiền: ${total}`,
       `Tra cứu đơn hàng: ${trackingUrl}`,
@@ -131,7 +66,7 @@ export async function sendOrderStatusNotice(
     await transporter.sendMail({
       from,
       to: details.customerEmail,
-      subject: `${notice.subject} · ${details.publicCode}`,
+      subject: `${subject} · ${details.publicCode}`,
       html,
       text,
     });

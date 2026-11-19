@@ -23,7 +23,7 @@ import {
   isStorefrontStyle,
   storefrontSectionIds,
 } from "@/lib/store-appearance";
-import { sendOrderStatusNotice, type OrderStatusNotice } from "@/lib/email/order-status";
+import { sendOrderCompletionNotice } from "@/lib/email/order-status";
 import { getMerchantContext } from "./data";
 import { getActiveMembership, activeStoreCookie, requireExpectedStore } from "@/lib/active-store";
 import { cookies } from "next/headers";
@@ -905,7 +905,7 @@ export async function updateOrderStatus(formData: FormData) {
   const storeId = await getManagedStoreId(supabase, userId);
   const orderId = formText(formData, "order_id");
   const requestedStatus = formText(formData, "status");
-  const allowedStatuses = ["confirmed", "preparing", "ready", "out_for_delivery", "completed", "cancelled", "rejected"] as const satisfies readonly OrderStatusNotice[];
+  const allowedStatuses = ["confirmed", "preparing", "ready", "out_for_delivery", "completed", "cancelled", "rejected"] as const;
   const status = allowedStatuses.find((value) => value === requestedStatus);
 
   if (!orderId || !status) redirect(orderListRedirect(formData, "invalid-order-status"));
@@ -921,9 +921,9 @@ export async function updateOrderStatus(formData: FormData) {
 
   if (error) redirect(orderListRedirect(formData, "order-status-failed"));
 
-  after(async () => {
+  if (status === "completed") after(async () => {
     const [{ data: order, error: orderError }, { data: store, error: storeError }] = await Promise.all([
-      supabase.from("orders").select("public_code, customer_name, customer_email, total_vnd, fulfillment")
+      supabase.from("orders").select("public_code, customer_name, customer_email, total_vnd")
         .eq("id", orderId).eq("store_id", storeId).maybeSingle(),
       supabase.from("stores").select("name").eq("id", storeId).maybeSingle(),
     ]);
@@ -932,14 +932,13 @@ export async function updateOrderStatus(formData: FormData) {
       return;
     }
     if (!order.customer_email) return;
-    const sent = await sendOrderStatusNotice({
+    const sent = await sendOrderCompletionNotice({
       customerEmail: order.customer_email,
       customerName: order.customer_name,
       storeName: store.name,
       publicCode: order.public_code,
       totalVnd: Number(order.total_vnd),
-      fulfillment: order.fulfillment,
-    }, status);
+    });
     if (!sent) console.warn("Could not send order status email", { orderId, status });
   });
 
@@ -967,13 +966,11 @@ export async function sendCurrentOrderNotice(formData: FormData) {
   const orderId = formText(formData, "order_id");
   if (!/^[0-9a-f-]{36}$/i.test(orderId)) redirect(orderListRedirect(formData, "order-notice-failed"));
   const [{ data: order }, { data: store }] = await Promise.all([
-    supabase.from("orders").select("public_code, customer_name, customer_email, total_vnd, fulfillment, status").eq("id", orderId).eq("store_id", storeId).maybeSingle(),
+    supabase.from("orders").select("public_code, customer_name, customer_email, total_vnd, status").eq("id", orderId).eq("store_id", storeId).maybeSingle(),
     supabase.from("stores").select("name").eq("id", storeId).maybeSingle(),
   ]);
-  const allowed = ["confirmed", "preparing", "ready", "out_for_delivery", "completed", "cancelled", "rejected"] as const satisfies readonly OrderStatusNotice[];
-  const notice = allowed.find((status) => status === order?.status);
-  if (!order || !store || !notice || !order.customer_email) redirect(orderListRedirect(formData, "order-notice-failed"));
-  const sent = await sendOrderStatusNotice({ customerEmail: order.customer_email, customerName: order.customer_name, storeName: store.name, publicCode: order.public_code, totalVnd: Number(order.total_vnd), fulfillment: order.fulfillment }, notice);
+  if (!order || !store || order.status !== "completed" || !order.customer_email) redirect(orderListRedirect(formData, "order-notice-failed"));
+  const sent = await sendOrderCompletionNotice({ customerEmail: order.customer_email, customerName: order.customer_name, storeName: store.name, publicCode: order.public_code, totalVnd: Number(order.total_vnd) });
   redirect(orderListRedirect(formData, sent ? "order-notice-sent" : "order-notice-failed"));
 }
 
@@ -996,29 +993,7 @@ export async function decideOrderCancellation(formData: FormData) {
     redirect(orderListRedirect(formData, "cancellation-decision-failed"));
   }
 
-  const [{ data: order, error: orderError }, { data: store, error: storeError }] = await Promise.all([
-    supabase.from("orders")
-      .select("public_code, customer_name, customer_email, total_vnd, fulfillment")
-      .eq("id", orderId)
-      .eq("store_id", storeId)
-      .maybeSingle(),
-    supabase.from("stores").select("name").eq("id", storeId).maybeSingle(),
-  ]);
-  const emailSent = !orderError && !storeError && order && store
-    ? await sendOrderStatusNotice({
-        customerEmail: order.customer_email,
-        customerName: order.customer_name,
-        storeName: store.name,
-        publicCode: order.public_code,
-        totalVnd: Number(order.total_vnd),
-        fulfillment: order.fulfillment,
-      }, decision === "accept" ? "cancelled" : "cancellation_request_declined")
-    : false;
-
-  if (decision === "accept") {
-    redirect(orderListRedirect(formData, emailSent ? "cancellation-request-approved" : "cancellation-request-approved-email-failed"));
-  }
-  redirect(orderListRedirect(formData, emailSent ? "cancellation-request-declined" : "cancellation-request-declined-email-failed"));
+  redirect(orderListRedirect(formData, decision === "accept" ? "cancellation-request-approved" : "cancellation-request-declined"));
 }
 
 export async function recordOrderRefund(formData: FormData) {
@@ -1050,30 +1025,7 @@ export async function confirmBankTransfer(formData: FormData) {
 
   if (error) redirect(orderListRedirect(formData, "payment-confirmation-failed"));
 
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .select("public_code, customer_name, customer_email, total_vnd, fulfillment")
-    .eq("id", orderId)
-    .eq("store_id", storeId)
-    .maybeSingle();
-  const { data: store, error: storeError } = await supabase
-    .from("stores")
-    .select("name")
-    .eq("id", storeId)
-    .maybeSingle();
-
-  const emailSent = !orderError && !storeError && order && store
-    ? await sendOrderStatusNotice({
-        customerEmail: order.customer_email,
-        customerName: order.customer_name,
-        storeName: store.name,
-        publicCode: order.public_code,
-        totalVnd: Number(order.total_vnd),
-        fulfillment: order.fulfillment,
-      }, "payment_confirmed")
-    : false;
-
-  redirect(orderListRedirect(formData, emailSent ? "payment-confirmed" : "payment-confirmed-email-failed"));
+  redirect(orderListRedirect(formData, "payment-confirmed"));
 }
 
 export async function updateReviewStatus(formData: FormData) {
