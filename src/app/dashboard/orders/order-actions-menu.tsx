@@ -32,6 +32,8 @@ export default function OrderActionsMenu(props: Props) {
     {props.canConfirmTransfer && <form action={confirmBankTransfer}>{hidden()}<button type="submit">Xác nhận đã nhận tiền</button></form>}
     {props.canRefund && props.owner && <form action={recordOrderRefund} onSubmit={(e) => { if (!window.confirm("Chỉ ghi nhận sau khi đã hoàn tiền cho khách. Xác nhận đã hoàn tiền?")) e.preventDefault(); }}>{hidden()}<button type="submit">Ghi nhận đã hoàn tiền</button></form>}
     {props.status !== "pending" && <form action={sendCurrentOrderNotice}>{hidden()}<button type="submit">Gửi email trạng thái cho khách</button></form>}
+    {props.owner && props.fulfillment === "delivery" && !["pending","rejected"].includes(props.status) && <a href={`/dashboard/orders/${props.orderId}/shipping`}>Vận đơn GHN thử nghiệm</a>}
+    {props.owner && props.fulfillment === "pickup" && ["confirmed","preparing","ready"].includes(props.status) && <p>Đơn nhận tại cửa hàng không có địa chỉ giao hàng, nên chưa thể tạo vận đơn GHN.</p>}
     <a href={`/dashboard/orders/${props.orderId}/document?type=invoice`} target="_blank" rel="noreferrer">In hóa đơn bán hàng</a><a href={`/dashboard/orders/${props.orderId}/document?type=packing`} target="_blank" rel="noreferrer">In phiếu đóng gói</a>
     <p>Thông báo trạng thái được gửi qua email khi có địa chỉ khách hàng và cấu hình gửi mail.</p>
   </div>, document.body)}</>;
