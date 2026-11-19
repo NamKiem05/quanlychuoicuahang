@@ -11,6 +11,7 @@ import { getStoreBannerUrls, type StoreThemePreset, type StorefrontLayoutPreset,
 import StoreBannerSlideshow from "@/app/store-banner-slideshow";
 import RetailStorefront from "@/app/retail-storefront";
 import RetailCart from "@/app/retail-cart";
+import CheckoutAddressFields, { type CheckoutAddress } from "@/app/checkout-address-fields";
 import RetailCheckout from "@/app/retail-checkout";
 import type { RetailVariant } from "@/app/retail-variant-picker";
 import { getOrderHoursStatus, type OrderHours } from "@/lib/store-order-hours";
@@ -81,6 +82,7 @@ export type StorefrontData = {
     delivery_enabled: boolean;
     delivery_radius_m: number;
     delivery_fee_vnd: number;
+    ghnCheckoutEnabled?: boolean;
     bankTransfer: null | {
       bank_code: string;
       bank_name: string;
@@ -238,6 +240,11 @@ export default function StorefrontClient({ store, categories, products, reviews,
     };
   }, [activePanel, orderCode, orderPhone, orderPayment, qrPaymentStatus, supabase]);
   const [fulfillmentMethod, setFulfillmentMethod] = useState<"pickup" | "delivery">("pickup");
+  const [checkoutAddress, setCheckoutAddress] = useState<CheckoutAddress | null>(null);
+  const [ghnQuote, setGhnQuote] = useState<{ id: string; address: string; fee: number; expiresAt: string } | null>(null);
+  const [ghnQuoteError, setGhnQuoteError] = useState("");
+  const [quoteRetry, setQuoteRetry] = useState(0);
+  const deliveryLocationRequest = useRef(0);
   const [deliveryLocation, setDeliveryLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [deliveryLocationMessage, setDeliveryLocationMessage] = useState("");
   const [isLocatingDelivery, setIsLocatingDelivery] = useState(false);
@@ -333,7 +340,65 @@ export default function StorefrontClient({ store, categories, products, reviews,
   );
   const promotionForCart = appliedPromotion?.subtotalVnd === cartTotal ? appliedPromotion : null;
   const promotionDiscount = promotionForCart?.discountVnd ?? 0;
-  const checkoutTotal = cartTotal + (fulfillmentMethod === "delivery" ? Number(store.delivery_fee_vnd) : 0) - promotionDiscount;
+  const orderItems = useMemo(() => cart.map((line) => ({
+    product_id: line.productId,
+    quantity: line.quantity,
+    option_ids: line.optionIds,
+    ...(line.variantId ? { variant_id: line.variantId } : {}),
+  })), [cart]);
+  const ghnDelivery = Boolean(store.ghnCheckoutEnabled && fulfillmentMethod === "delivery");
+  const checkoutOpen = retailCheckoutView || activePanel === "checkout";
+  const deliveryFee = store.ghnCheckoutEnabled ? ghnQuote?.fee ?? 0 : Number(store.delivery_fee_vnd);
+  const checkoutTotal = cartTotal + (fulfillmentMethod === "delivery" ? deliveryFee : 0) - promotionDiscount;
+  const [quotedItems, setQuotedItems] = useState<typeof orderItems | null>(null);
+  const quoteReady = ghnQuote !== null && quotedItems === orderItems && checkoutAddress !== null;
+  const deliveryFeeLabel = ghnDelivery && !quoteReady ? "Chưa có báo giá" : formatPrice(deliveryFee);
+
+  useEffect(() => {
+    if (!checkoutOpen || !ghnDelivery || !checkoutAddress || !orderItems.length) return;
+    const controller = new AbortController();
+    let expires: number | undefined;
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/shipping/ghn-quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: store.slug, items: orderItems, ...checkoutAddress }),
+          signal: controller.signal,
+        });
+        const data = await response.json();
+        if (controller.signal.aborted) return;
+        if (!response.ok) throw new Error(data.message);
+        if (!Number.isSafeInteger(data.fee) || !Number.isFinite(Date.parse(data.expiresAt))) {
+          throw new Error("GHN chưa trả về báo giá hợp lệ.");
+        }
+        setGhnQuote(data);
+        setQuotedItems(orderItems);
+        setGhnQuoteError("");
+        expires = window.setTimeout(() => {
+          setGhnQuote(null);
+          setQuoteRetry((value) => value + 1);
+        }, Math.max(0, Date.parse(data.expiresAt) - Date.now()));
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setGhnQuote(null);
+          setGhnQuoteError(error instanceof Error && error.message ? error.message : "Chưa lấy được phí GHN.");
+        }
+      }
+    }, 500);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+      window.clearTimeout(expires);
+    };
+  }, [checkoutOpen, ghnDelivery, checkoutAddress, orderItems, quoteRetry, store.slug]);
+
+  const quoteStatus = ghnDelivery ? (
+    <div className="checkout-ghn-quote" aria-live="polite">
+      {ghnQuoteError ? <><p>{ghnQuoteError}</p><button type="button" onClick={() => { setGhnQuoteError(""); setQuoteRetry((value) => value + 1); }}>Thử lấy phí lại</button></> :
+        <p>{quoteReady ? "Đã lấy phí GHN Staging." : checkoutAddress ? "Đang lấy phí GHN…" : "Chọn địa chỉ đầy đủ để tính phí GHN."}</p>}
+    </div>
+  ) : null;
 
   const visibleProducts = useMemo(
     () =>
@@ -374,6 +439,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
   }
 
   function closeOrderModal() {
+    if (activePanel === "checkout") changeCheckoutAddress(null);
     setActivePanel(null);
     window.requestAnimationFrame(() => dialogTriggerRef.current?.focus());
   }
@@ -513,14 +579,29 @@ export default function StorefrontClient({ store, categories, products, reviews,
   }
 
   function changeFulfillmentMethod(method: "pickup" | "delivery") {
+    if (method !== fulfillmentMethod) changeCheckoutAddress(null);
     setFulfillmentMethod(method);
-    const nextTotal = cartTotal + (method === "delivery" ? Number(store.delivery_fee_vnd) : 0) - promotionDiscount;
+    const nextTotal = cartTotal + (method === "delivery" ? deliveryFee : 0) - promotionDiscount;
     if (nextTotal <= 0) setPaymentMethod("cash_on_pickup");
   }
 
-  function requestDeliveryLocation() {
-    setDeliveryLocationMessage("");
+  function changeCheckoutAddress(address: CheckoutAddress | null) {
+    setCheckoutAddress(address);
+    setGhnQuote(null);
+    setGhnQuoteError("");
+    clearDeliveryLocation();
+  }
+
+  function clearDeliveryLocation() {
+    deliveryLocationRequest.current += 1;
     setDeliveryLocation(null);
+    setDeliveryLocationMessage("");
+    setIsLocatingDelivery(false);
+  }
+
+  function requestDeliveryLocation() {
+    clearDeliveryLocation();
+    const requestId = deliveryLocationRequest.current;
     if (!navigator.geolocation) {
       setDeliveryLocationMessage("Trình duyệt này chưa hỗ trợ lấy vị trí.");
       return;
@@ -529,11 +610,13 @@ export default function StorefrontClient({ store, categories, products, reviews,
     setIsLocatingDelivery(true);
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
+        if (requestId !== deliveryLocationRequest.current) return;
         setDeliveryLocation({ latitude: coords.latitude, longitude: coords.longitude });
         setDeliveryLocationMessage("Đã ghi nhận vị trí giao hàng của bạn.");
         setIsLocatingDelivery(false);
       },
       () => {
+        if (requestId !== deliveryLocationRequest.current) return;
         setDeliveryLocationMessage("Chưa lấy được vị trí. Hãy cho phép trình duyệt truy cập vị trí rồi thử lại.");
         setIsLocatingDelivery(false);
       },
@@ -593,7 +676,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
       setAppliedPromotion(nextPromotion);
       setPromotionCodeInput(result.promotion_code);
       setPromotionFeedback({ message: `Đã áp dụng mã ${result.promotion_code}.`, isError: false });
-      if (cartTotal + (fulfillmentMethod === "delivery" ? Number(store.delivery_fee_vnd) : 0) - nextPromotion.discountVnd <= 0 && paymentMethod === "bank_transfer") {
+      if (cartTotal + (fulfillmentMethod === "delivery" ? deliveryFee : 0) - nextPromotion.discountVnd <= 0 && paymentMethod === "bank_transfer") {
         setPaymentMethod("cash_on_pickup");
       }
     } catch {
@@ -621,35 +704,46 @@ export default function StorefrontClient({ store, categories, products, reviews,
     const customerEmail = String(formData.get("customerEmail") ?? "").trim();
     const deliveryLatitude = String(formData.get("deliveryLatitude") ?? "");
     const deliveryLongitude = String(formData.get("deliveryLongitude") ?? "");
-    if (requestedFulfillment === "delivery" && (!deliveryLatitude || !deliveryLongitude)) {
+    const deliveryAddress = String(formData.get("deliveryAddress") ?? "").trim();
+    const useGhn = requestedFulfillment === "delivery" && store.ghnCheckoutEnabled;
+    if (useGhn && (!quoteReady || !ghnQuote || ghnQuote.address !== deliveryAddress || Date.parse(ghnQuote.expiresAt) <= Date.now())) {
+      setIsSubmittingOrder(false);
+      setOrderError("Cần báo phí GHN hợp lệ cho địa chỉ và giỏ hàng hiện tại.");
+      return;
+    }
+    if (requestedFulfillment === "delivery" && !useGhn && (!deliveryLatitude || !deliveryLongitude)) {
       setIsSubmittingOrder(false);
       setOrderError("Hãy lấy vị trí giao hàng trước khi gửi đơn.");
       return;
     }
 
     try {
-      const { data, error } = await supabase.rpc("create_guest_order_with_promotion", {
+      const order = {
         requested_store_slug: store.slug,
         requested_customer_name: String(formData.get("customerName") ?? "").trim(),
         requested_customer_phone: customerPhone,
         requested_customer_note: String(formData.get("customerNote") ?? "").trim(),
-        requested_items: cart.map((line) => ({
-          product_id: line.productId,
-          quantity: line.quantity,
-          option_ids: line.optionIds,
-          ...(line.variantId ? { variant_id: line.variantId } : {}),
-        })),
+        requested_items: orderItems,
         requested_payment_method: requestedPaymentMethod,
         requested_fulfillment: requestedFulfillment,
-        requested_delivery_address: String(formData.get("deliveryAddress") ?? "").trim(),
+        requested_delivery_address: deliveryAddress,
         requested_delivery_latitude: deliveryLatitude ? Number(deliveryLatitude) : null,
         requested_delivery_longitude: deliveryLongitude ? Number(deliveryLongitude) : null,
         requested_customer_email: customerEmail,
         requested_promotion_code: requestedPromotionCode,
-      });
+      };
+      const { data, error } = useGhn && ghnQuote
+        ? await supabase.rpc("create_ghn_checkout_order", { ...order, requested_quote_id: ghnQuote.id })
+        : await supabase.rpc("create_guest_order_with_promotion", order);
 
       if (error || !data?.public_code) {
         const errorDetail = error?.message.toLowerCase() ?? "";
+        if (errorDetail.includes("ghn quote expired")) {
+          setGhnQuote(null);
+          setQuoteRetry((value) => value + 1);
+          setOrderError("Báo giá GHN đã hết hiệu lực. Hãy kiểm tra lại phí trước khi đặt.");
+          return;
+        }
         setOrderError(errorDetail.includes("retail_customer_login_required")
           ? "Phiên đăng nhập đã hết hạn hoặc email chưa được xác minh. Hãy quay lại giỏ hàng và đăng nhập lại."
           : errorDetail.includes("outside order hours")
@@ -700,6 +794,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
         distance: data.delivery_distance_m == null ? null : Number(data.delivery_distance_m),
       });
       setCart([]);
+      changeCheckoutAddress(null);
       setRetailCheckoutView(false);
       setRetailCartView(false);
       setActivePanel("success");
@@ -758,14 +853,14 @@ export default function StorefrontClient({ store, categories, products, reviews,
           void startRetailCheckout(trigger, pendingCart);
         } else setRetailCartView(true);
         return null;
-      }} cartView={retailCartView} checkoutView={retailCheckoutView} onExitCart={() => { setRetailCartView(false); setRetailCheckoutView(false); }} renderCheckout={() => <RetailCheckout
+      }} cartView={retailCartView} checkoutView={retailCheckoutView} onExitCart={() => { changeCheckoutAddress(null); setRetailCartView(false); setRetailCheckoutView(false); }} renderCheckout={() => <RetailCheckout
         lines={cartLines} cartCount={cartCount} subtotal={cartTotal} discount={promotionDiscount} total={checkoutTotal}
-        storeName={store.name} deliveryEnabled={store.delivery_enabled} deliveryFee={store.delivery_fee_vnd} deliveryRadius={store.delivery_radius_m} bankTransfer={Boolean(store.bankTransfer)}
+        storeName={store.name} deliveryEnabled={store.delivery_enabled} deliveryFee={deliveryFee} ghnEnabled={Boolean(store.ghnCheckoutEnabled)} quoteReady={quoteReady} quoteStatus={quoteStatus} deliveryRadius={store.delivery_radius_m} bankTransfer={Boolean(store.bankTransfer)}
         fulfillment={fulfillmentMethod} payment={paymentMethod} deliveryLocation={deliveryLocation} deliveryLocationMessage={deliveryLocationMessage} locating={isLocatingDelivery}
         promoInput={promotionCodeInput} promoCode={promotionForCart?.code ?? null} promoFeedback={promotionFeedback} promoStale={Boolean(appliedPromotion && !promotionForCart)}
         acceptsOrders={acceptsOrders} submitting={isSubmittingOrder} applying={isApplyingPromotion} error={orderError}
-        onBack={() => { setOrderError(""); setRetailCheckoutView(false); setRetailCartView(true); }} onSubmit={placeOrder}
-        onFulfillment={changeFulfillmentMethod} onPayment={setPaymentMethod} onAddressChange={() => { setDeliveryLocation(null); setDeliveryLocationMessage(""); }} onLocate={requestDeliveryLocation}
+        onBack={() => { changeCheckoutAddress(null); setOrderError(""); setRetailCheckoutView(false); setRetailCartView(true); }} onSubmit={placeOrder}
+        onFulfillment={changeFulfillmentMethod} onPayment={setPaymentMethod} onAddressChange={changeCheckoutAddress} onLocate={requestDeliveryLocation}
         onPromoInput={(value) => { setPromotionCodeInput(value); setAppliedPromotion(null); setPromotionFeedback(null); }}
         onPromoApply={() => { void applyPromotion(); }} onPromoClear={() => { setAppliedPromotion(null); setPromotionCodeInput(""); setPromotionFeedback(null); }}
       />} renderCart={(openDetail) => <RetailCart lines={cartLines} cartCount={cartCount} subtotal={cartTotal} discount={promotionDiscount} appliedCode={promotionForCart?.code ?? null} promotionInput={promotionCodeInput} promotionFeedback={promotionFeedback} promotionStale={Boolean(appliedPromotion && !promotionForCart)} applying={isApplyingPromotion} acceptsOrders={acceptsOrders} checkoutError={retailCheckoutError} recommendations={products.filter((product) => !cart.some((line) => line.productId === product.id))} onChange={changeQuantity} onPromotionInput={(value) => { setPromotionCodeInput(value); setAppliedPromotion(null); setPromotionFeedback(null); }} onApply={() => { void applyPromotion(); }} onClear={() => { setAppliedPromotion(null); setPromotionCodeInput(""); setPromotionFeedback(null); }} onContinue={() => { setRetailCartView(false); resetMenu(true); }} onCheckout={(trigger) => { void startRetailCheckout(trigger); }} onDetail={openDetail} />} cartQuantity={(id) => cart.filter((line) => line.productId === id).reduce((sum, line) => sum + line.quantity, 0)} /> : <>
@@ -1129,8 +1224,8 @@ export default function StorefrontClient({ store, categories, products, reviews,
 
             {activePanel === "checkout" && (
               <form className="checkout-form" onSubmit={placeOrder}>
-                <button className="storefront-return-to-cart" type="button" onClick={() => { setOrderError(""); if (isRetail) { setActivePanel(null); setRetailCartView(true); } else setActivePanel("cart"); }}>← Về giỏ hàng</button>
-                <div className="pickup-note"><span>{fulfillmentMethod === "delivery" ? "⌖" : "⌂"}</span><div><b>{fulfillmentMethod === "delivery" ? "Giao tận nơi" : "Nhận tại cửa hàng"}</b><small>{fulfillmentMethod === "delivery" ? `Cửa hàng giao trong bán kính ${formatDistance(store.delivery_radius_m)}.` : `${store.name} sẽ xác nhận đơn và thời gian ${isRetail ? "nhận hàng" : "nhận món"}.`}</small></div></div>
+                <button className="storefront-return-to-cart" type="button" onClick={() => { changeCheckoutAddress(null); setOrderError(""); if (isRetail) { setActivePanel(null); setRetailCartView(true); } else setActivePanel("cart"); }}>← Về giỏ hàng</button>
+                <div className="pickup-note"><span>{fulfillmentMethod === "delivery" ? "⌖" : "⌂"}</span><div><b>{fulfillmentMethod === "delivery" ? "Giao tận nơi" : "Nhận tại cửa hàng"}</b><small>{fulfillmentMethod === "delivery" ? (ghnDelivery ? "Phí giao tính theo địa chỉ nhận hàng." : `Cửa hàng giao trong bán kính ${formatDistance(store.delivery_radius_m)}.`) : `${store.name} sẽ xác nhận đơn và thời gian ${isRetail ? "nhận hàng" : "nhận món"}.`}</small></div></div>
                 <label>Họ và tên<input name="customerName" autoComplete="name" placeholder="Tên người nhận" required /></label>
                 <label>Số điện thoại<input name="customerPhone" type="tel" autoComplete="tel" inputMode="tel" pattern="[0-9+() .-]{9,16}" placeholder="Ví dụ: 090 123 4567" required /></label>
                 <label>Email nhận mã đơn<input name="customerEmail" type="email" autoComplete="email" maxLength={254} placeholder="ban@example.com" required /></label>
@@ -1143,13 +1238,15 @@ export default function StorefrontClient({ store, categories, products, reviews,
                   {store.delivery_enabled && (
                     <label className={fulfillmentMethod === "delivery" ? "payment-method-option selected" : "payment-method-option"}>
                       <input type="radio" name="fulfillmentMethod" value="delivery" checked={fulfillmentMethod === "delivery"} onChange={() => changeFulfillmentMethod("delivery")} />
-                      <span><b>Giao tận nơi · {formatPrice(store.delivery_fee_vnd)}</b><small>Bán kính tối đa {formatDistance(store.delivery_radius_m)}, tính theo khoảng cách đường chim bay.</small></span>
+                      <span><b>Giao tận nơi · {store.ghnCheckoutEnabled ? "GHN Staging" : formatPrice(deliveryFee)}</b><small>{store.ghnCheckoutEnabled ? "Tính phí theo địa chỉ và kiện hàng." : `Bán kính tối đa ${formatDistance(store.delivery_radius_m)}, tính theo khoảng cách đường chim bay.`}</small></span>
                     </label>
                   )}
                 </fieldset>
                 {fulfillmentMethod === "delivery" && (
                   <div className="delivery-address-fields">
-                    <label>Địa chỉ giao hàng<textarea name="deliveryAddress" rows={2} minLength={5} maxLength={500} required placeholder="Số nhà, đường, phường/xã, quận/huyện" /></label>
+                    <CheckoutAddressFields onChange={changeCheckoutAddress} />
+                    {quoteStatus}
+                    {!ghnDelivery && <>
                     <button className="delivery-location-button" type="button" onClick={requestDeliveryLocation} disabled={isLocatingDelivery}>
                       {isLocatingDelivery ? "Đang xác định vị trí..." : deliveryLocation ? "Cập nhật vị trí giao hàng" : "Dùng vị trí hiện tại"}
                     </button>
@@ -1158,6 +1255,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
                     <input type="hidden" name="deliveryLatitude" value={deliveryLocation?.latitude ?? ""} />
                     <input type="hidden" name="deliveryLongitude" value={deliveryLocation?.longitude ?? ""} />
                     <p className="dashboard-help">Hãy cho phép trình duyệt truy cập vị trí tại điểm nhận hàng. Chúng tôi sẽ kiểm tra bán kính trước khi xác nhận đơn.</p>
+                    </>}
                   </div>
                 )}
                 <label>{isRetail ? "Ghi chú cho cửa hàng" : "Ghi chú cho quán"} <span className="optional-label">Không bắt buộc</span><textarea name="customerNote" rows={3} maxLength={500} placeholder={isRetail ? "Ghi chú cho đơn hàng..." : "Ít cay, để riêng nước sốt..."} /></label>
@@ -1176,11 +1274,11 @@ export default function StorefrontClient({ store, categories, products, reviews,
                 </fieldset>
                 {orderError && <p className="order-error" role="alert">{orderError}</p>}
                 <div className="checkout-total"><span>Tạm tính · {cartCount} {isRetail ? "sản phẩm" : "món"}</span><strong>{formatPrice(cartTotal)}</strong></div>
-                {fulfillmentMethod === "delivery" && <div className="checkout-total delivery-fee-row"><span>Phí giao hàng</span><strong>{formatPrice(store.delivery_fee_vnd)}</strong></div>}
+                {fulfillmentMethod === "delivery" && <div className="checkout-total delivery-fee-row"><span>Phí giao hàng</span><strong>{deliveryFeeLabel}</strong></div>}
                 {promotionForCart && <div className="checkout-total promotion-discount-row"><span>Giảm giá · {promotionForCart.code}</span><strong>−{formatPrice(promotionForCart.discountVnd)}</strong></div>}
-                <div className="checkout-total grand-total"><span>Tổng thanh toán</span><strong>{formatPrice(checkoutTotal)}</strong></div>
-                <button className="primary-button checkout-button" type="submit" disabled={!acceptsOrders || isSubmittingOrder || isApplyingPromotion}>{isSubmittingOrder ? "Đang gửi đơn..." : isApplyingPromotion ? "Đang kiểm tra mã..." : (isRetail ? "Đặt hàng" : "Đặt món và tạo đơn")}<span>→</span></button>
-                <p className="payment-note">{checkoutTotal <= 0 ? (isRetail ? "Mã khuyến mãi đã giảm toàn bộ tiền sản phẩm; bạn không còn khoản cần thanh toán." : "Mã khuyến mãi đã giảm toàn bộ tiền món; bạn không còn khoản cần thanh toán.") : `${fulfillmentMethod === "delivery" ? "Cửa hàng tự giao đơn đến địa chỉ của bạn." : (isRetail ? "Nhận hàng tại cửa hàng." : "Nhận món tại cửa hàng.")} · ${paymentMethod === "bank_transfer" ? "Thanh toán sẽ được tự xác nhận nếu cửa hàng đã kết nối; nếu chưa, cửa hàng sẽ xác nhận thủ công." : fulfillmentMethod === "delivery" ? "Thanh toán tiền mặt khi nhận hàng." : (isRetail ? "Thanh toán tiền mặt khi nhận hàng." : "Thanh toán tiền mặt khi nhận món.")}`}</p>
+                <div className="checkout-total grand-total"><span>Tổng thanh toán</span><strong>{ghnDelivery && !quoteReady ? "Chưa có báo giá" : formatPrice(checkoutTotal)}</strong></div>
+                <button className="primary-button checkout-button" type="submit" disabled={!acceptsOrders || isSubmittingOrder || isApplyingPromotion || (ghnDelivery && !quoteReady)}>{isSubmittingOrder ? "Đang gửi đơn..." : isApplyingPromotion ? "Đang kiểm tra mã..." : (isRetail ? "Đặt hàng" : "Đặt món và tạo đơn")}<span>→</span></button>
+                <p className="payment-note">{checkoutTotal <= 0 ? (isRetail ? "Mã khuyến mãi đã giảm toàn bộ tiền sản phẩm; bạn không còn khoản cần thanh toán." : "Mã khuyến mãi đã giảm toàn bộ tiền món; bạn không còn khoản cần thanh toán.") : `${fulfillmentMethod === "delivery" ? (ghnDelivery ? "Giao hàng qua GHN Staging." : "Cửa hàng tự giao đơn đến địa chỉ của bạn.") : (isRetail ? "Nhận hàng tại cửa hàng." : "Nhận món tại cửa hàng.")} · ${paymentMethod === "bank_transfer" ? "Thanh toán sẽ được tự xác nhận nếu cửa hàng đã kết nối; nếu chưa, cửa hàng sẽ xác nhận thủ công." : fulfillmentMethod === "delivery" ? "Thanh toán tiền mặt khi nhận hàng." : (isRetail ? "Thanh toán tiền mặt khi nhận hàng." : "Thanh toán tiền mặt khi nhận món.")}`}</p>
               </form>
             )}
 

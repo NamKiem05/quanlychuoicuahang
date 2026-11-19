@@ -1,5 +1,7 @@
 "use server";
 
+import { readDimensions } from "@/lib/shipping/packaging";
+
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
@@ -670,12 +672,13 @@ export async function createProduct(formData: FormData) {
   const variantsText = formText(formData, "variants_json");
   const imageUrl = formText(formData, "image_url");
   const description = formText(formData, "description");
+  const shipping = readDimensions(formData);
   const stockText = formText(formData, "stock_quantity");
   const stockQuantity = stockText === "" ? null : Number(stockText);
   const lowStockThreshold = formData.has("low_stock_threshold") ? Number(formText(formData, "low_stock_threshold") || "5") : null;
   const slug = slugify(name);
 
-  if (!name || !slug || name.length > 160 || description.length > 2000 || !Number.isSafeInteger(priceVnd) || priceVnd < 0 || (stockQuantity !== null && (!Number.isSafeInteger(stockQuantity) || stockQuantity < 0 || stockQuantity > 2147483647)) ||
+  if (shipping === false || !name || !slug || name.length > 160 || description.length > 2000 || !Number.isSafeInteger(priceVnd) || priceVnd < 0 || (stockQuantity !== null && (!Number.isSafeInteger(stockQuantity) || stockQuantity < 0 || stockQuantity > 2147483647)) ||
       (lowStockThreshold !== null && (!Number.isInteger(lowStockThreshold) || lowStockThreshold < 0 || lowStockThreshold > 2147483647))) {
     await removeOwnedProductImage(supabase, imageUrl, storeId);
     redirect("/dashboard/menu?message=invalid-product");
@@ -689,7 +692,7 @@ export async function createProduct(formData: FormData) {
     let variants: unknown;
     try { variants = JSON.parse(variantsText); } catch { redirect("/dashboard/menu?message=invalid-variants"); }
     if (!Array.isArray(variants) || variants.length < 1 || variants.length > 80 || variantsText.length > 100000) redirect("/dashboard/menu?message=invalid-variants");
-    const result = await supabase.rpc("create_product_with_variant_drafts", { target_store: storeId, product_name: name, product_slug: slug, product_category: categoryId || null, product_brand: brandId || null, product_description: description, product_image: imageUrl || null, product_price: priceVnd, product_low_stock: lowStockThreshold ?? 5, requested_variants: variants });
+    const result = await supabase.rpc(shipping ? "create_product_with_shipping_variant_drafts" : "create_product_with_variant_drafts", { target_store: storeId, product_name: name, product_slug: slug, product_category: categoryId || null, product_brand: brandId || null, product_description: description, product_image: imageUrl || null, product_price: priceVnd, product_low_stock: lowStockThreshold ?? 5, requested_variants: variants, ...(shipping ? { product_shipping: shipping } : {}) });
     if (result.error) { await removeOwnedProductImage(supabase, imageUrl, storeId); redirect("/dashboard/menu?message=variant-create-failed"); }
     redirect("/dashboard/menu?message=variant-product-created");
   }
@@ -702,6 +705,7 @@ export async function createProduct(formData: FormData) {
     description,
     price_vnd: priceVnd,
     stock_quantity: stockQuantity,
+    ...(shipping || formData.has("weight_g") ? { shipping_dimensions: shipping } : {}),
     ...(lowStockThreshold === null ? {} : { low_stock_threshold: lowStockThreshold }),
     image_url: imageUrl || null,
     status: "active",
@@ -722,6 +726,7 @@ export async function updateProduct(formData: FormData) {
   const categoryId = formText(formData, "category_id");
   const imageUrl = formText(formData, "image_url");
   const description = formText(formData, "description");
+  const shipping = readDimensions(formData);
   const stockText = formText(formData, "stock_quantity");
   const stockQuantity = stockText === "" ? null : Number(stockText);
   const lowStockThreshold = formData.has("low_stock_threshold") ? Number(formText(formData, "low_stock_threshold") || "5") : null;
@@ -729,7 +734,7 @@ export async function updateProduct(formData: FormData) {
   const slug = slugify(name);
 
   if (
-    !productId || !name || !slug || name.length > 160 ||
+    shipping === false || !productId || !name || !slug || name.length > 160 ||
     !Number.isSafeInteger(priceVnd) || priceVnd < 0 || description.length > 2000 ||
     (stockQuantity !== null && (!Number.isSafeInteger(stockQuantity) || stockQuantity < 0 || stockQuantity > 2147483647)) ||
     (lowStockThreshold !== null && (!Number.isInteger(lowStockThreshold) || lowStockThreshold < 0 || lowStockThreshold > 2147483647)) ||
@@ -758,6 +763,7 @@ export async function updateProduct(formData: FormData) {
       description,
       price_vnd: priceVnd,
       stock_quantity: stockQuantity,
+    ...(shipping || formData.has("weight_g") ? { shipping_dimensions: shipping } : {}),
       ...(lowStockThreshold === null ? {} : { low_stock_threshold: lowStockThreshold }),
       image_url: imageUrl || null,
       status,

@@ -21,6 +21,7 @@ type ManagedProduct = {
   status: string;
   image_url: string | null;
   description: string;
+  shipping_dimensions?: import("@/lib/shipping/packaging").Dimensions | null;
   stock_quantity: number | null;
   low_stock_threshold: number;
   optionGroups: ProductOptionGroup[];
@@ -179,6 +180,7 @@ export default function ProductAdminList({
                     image_url: selectedProduct.image_url,
                     description: selectedProduct.description,
                     stock_quantity: selectedProduct.stock_quantity,
+                    shipping_dimensions: selectedProduct.shipping_dimensions,
                     low_stock_threshold: selectedProduct.low_stock_threshold,
                   }}
                 />

@@ -162,6 +162,10 @@ export default async function StorePage({ params }: StorePageProps) {
     createdAt: review.created_at,
   }));
 
+  const { data: ghnCheckoutEnabled } = store.delivery_enabled
+    ? await supabase.rpc("store_ghn_checkout_enabled", { target_store: store.id })
+    : { data: false };
+
   return (
     <StorefrontClient
       store={{
@@ -174,6 +178,7 @@ export default async function StorePage({ params }: StorePageProps) {
         storefront_hidden_sections: normalizeHiddenSections(store.storefront_hidden_sections),
         delivery_radius_m: Number(store.delivery_radius_m),
         delivery_fee_vnd: Number(store.delivery_fee_vnd),
+        ghnCheckoutEnabled: ghnCheckoutEnabled === true,
         bankTransfer: paymentSettings ?? null,
         orderHours: (schedule?.order_hours ?? null) as OrderHours | null,
         storefront_style: isStorefrontStyle(styleSettings?.storefront_style) ? styleSettings.storefront_style : "original",

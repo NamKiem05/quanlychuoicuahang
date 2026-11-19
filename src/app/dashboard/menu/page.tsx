@@ -25,7 +25,7 @@ export default async function MerchantMenuPage({ searchParams }: { searchParams:
   const brands = brandsModule.data === true && !brandsModule.error ? await supabase.from("store_brands").select("id,name").eq("store_id", store.id).order("name") : { data: [] };
   const [categoryResult, productResult] = await Promise.all([
     supabase.from("categories").select(`${categoryFields}, image_url`).eq("store_id", store.id).order("sort_order"),
-    supabase.from("products").select(`${productFields}, low_stock_threshold`).eq("store_id", store.id).order("created_at", { ascending: false }),
+    supabase.from("products").select(`${productFields}, low_stock_threshold, shipping_dimensions`).eq("store_id", store.id).order("created_at", { ascending: false }),
   ]);
   const categoryImagesUnavailable = categoryResult.error?.code === "42703" || categoryResult.error?.code === "PGRST204";
   const { data: categories } = categoryImagesUnavailable
@@ -101,6 +101,7 @@ export default async function MerchantMenuPage({ searchParams }: { searchParams:
             image_url: product.image_url,
             description: product.description,
             stock_quantity: product.stock_quantity,
+            shipping_dimensions: "shipping_dimensions" in product ? product.shipping_dimensions as import("@/lib/shipping/packaging").Dimensions | null : undefined,
             low_stock_threshold: "low_stock_threshold" in product ? Number(product.low_stock_threshold) : 5,
             optionGroups: optionGroupsByProductId.get(product.id) ?? [],
           }))}

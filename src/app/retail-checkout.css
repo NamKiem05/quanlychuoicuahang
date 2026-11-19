@@ -12,3 +12,4 @@
 @media(max-width:480px){.retail-checkout-heading ol { width:100%; }}
 .retail-checkout-fields select { width:100%; min-height:42px; padding:10px 12px; border:1px solid #ddd; border-radius:8px; background:#fff; color:#171717; font:inherit; }.retail-saved-address-error { grid-column:1/-1; margin:0; color:#a25b19; font-size:12px; line-height:1.5; }
 .retail-address-hint { grid-column:1/-1; margin:0; padding:11px 13px; border:1px solid #e6e6e6; border-radius:8px; background:#f8f8f8; color:#555; font-size:12px; line-height:1.5; }
+.retail-checkout-options label.unavailable { background:#fafafa; color:#777; cursor:not-allowed; }.retail-checkout-options label.unavailable input { cursor:not-allowed; }

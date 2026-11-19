@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createProduct, deleteProduct, setProductVisibility, updateProduct } from "../actions";
 import ProductImageField from "./product-image-field";
+import { dimensionFields, type Dimensions } from "@/lib/shipping/packaging";
 import VariantBuilder from "./variant-builder";
 import type { MerchandiseMode } from "@/lib/merchandise-mode";
 
@@ -15,6 +16,7 @@ type Product = {
   status: string;
   image_url: string | null;
   description: string;
+  shipping_dimensions?: Dimensions | null;
   stock_quantity: number | null;
   low_stock_threshold: number;
 };
@@ -64,6 +66,15 @@ export default function ProductForm({
           {!hasVariants && <label>Số lượng tồn kho <span className="field-hint">Để trống nếu không giới hạn số lượng</span><input name="stock_quantity" type="number" min="0" max="2147483647" step="1" defaultValue={product?.stock_quantity ?? ""} placeholder="Không giới hạn" /></label>}
           {showLowStockThreshold && <label>Ngưỡng cảnh báo tồn kho <span className="field-hint">Cảnh báo khi tồn kho bằng hoặc thấp hơn ngưỡng</span><input name="low_stock_threshold" type="number" min="0" max="2147483647" step="1" defaultValue={product?.low_stock_threshold ?? 5} required /></label>}
         </div>
+        <fieldset>
+          <legend>Thông tin vận chuyển cho một sản phẩm</legend>
+          <p className="dashboard-help">Nhập đủ bốn thông số để tính phí GHN.</p>
+          <div className="form-row">
+            {dimensionFields.map(([key, label, max]) => (
+              <label key={key}>{label}<input name={key} type="number" min={1} max={max} step={1} defaultValue={product?.shipping_dimensions?.[key]} /></label>
+            ))}
+          </div>
+        </fieldset>
         <div className="product-image-form-field"><span>{mode === "food" ? "Ảnh món" : "Ảnh sản phẩm"} <span className="field-hint">JPG, PNG hoặc WebP · tối đa 5 MB</span></span><ProductImageField storeId={storeId} initialUrl={product?.image_url ?? ""} onUploadingChange={setIsUploading} /></div>
         <label>Mô tả<textarea name="description" rows={2} maxLength={2000} defaultValue={product?.description ?? ""} placeholder={mode === "food" ? "Mô tả ngắn về món" : "Mô tả ngắn về sản phẩm"} /></label>
         {!product && mode !== "food" && <VariantBuilder onEnabledChange={setHasVariants} />}

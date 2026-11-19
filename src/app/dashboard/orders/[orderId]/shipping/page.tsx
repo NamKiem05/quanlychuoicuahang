@@ -3,6 +3,7 @@ import { notFound,redirect } from "next/navigation";
 import { getMerchantContext,formatPrice } from "@/app/dashboard/data";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptGhnToken,ghnLocations,type GhnLocation } from "@/lib/shipping/ghn";
+import type { GhnCheckoutSnapshot } from "@/lib/shipping/packaging";
 import ShipmentForm from "./shipment-form";
 import ShipmentStatus from "./shipment-status";
 import "./shipment.css";
@@ -64,18 +65,22 @@ export default async function ShipmentPage({params}:{params:Promise<{orderId:str
   let loadError = false;
   let provinces: GhnLocation[] = [];
   let locationsError = false;
+  let quote: GhnCheckoutSnapshot | null = null;
   try {
     const admin = createAdminClient();
-    const [connection, result] = await Promise.all([
+    const [connection, result, snapshot] = await Promise.all([
       admin.from("store_ghn_connections").select("shop_id,token_ciphertext,environment").eq("store_id", store.id).maybeSingle(),
       admin.from("store_ghn_shipments").select("state,shop_id,order_code,total_fee,request_payload,provider_status,status_checked_at")
         .eq("order_id", orderId).eq("store_id", store.id).maybeSingle(),
+      admin.from("orders").select("ghn_shipping_quote").eq("id", orderId).eq("store_id", store.id).single(),
     ]);
     if (connection.error || result.error) throw new Error("GHN_DATA_UNAVAILABLE");
+    if (snapshot.error && !["42703", "PGRST204"].includes(snapshot.error.code)) throw snapshot.error;
     shipment = result.data;
-    configured = connection.data?.environment === "staging";
+    quote = snapshot.data?.ghn_shipping_quote ?? null;
+    configured = connection.data?.environment === "staging" && (!quote || quote.shop_id === Number(connection.data.shop_id));
     canSync = configured && Number(connection.data?.shop_id) === Number(shipment?.shop_id);
-    if (configured && connection.data && shipment?.state !== "created") {
+    if (configured && connection.data && shipment?.state !== "created" && !quote) {
       try {
         provinces = await ghnLocations(decryptGhnToken(connection.data.token_ciphertext, store.id), Number(connection.data.shop_id));
       } catch {
@@ -97,5 +102,5 @@ export default async function ShipmentPage({params}:{params:Promise<{orderId:str
           {!canSync && <p>Hãy <Link href="/dashboard/shipping">kết nối lại GHN</Link> với tài khoản đã tạo vận đơn để đồng bộ.</p>}
           <ShipmentStatus storeId={store.id} orderId={order.id} canSync={canSync} />
         </div>
-      ) : !configured ? <p>Hãy <Link href="/dashboard/shipping">kết nối GHN thử nghiệm</Link> trước khi tạo vận đơn.</p> : !eligible ? <p role="alert" className="ghn-shipment-error">Đơn cần có hình thức giao hàng, đã được xác nhận và không có yêu cầu hủy đang chờ.</p> : <ShipmentForm storeId={store.id} orderId={order.id} provinces={provinces} locationsError={locationsError} previous={shipment?.request_payload || null} pending={shipment?.state === "pending"} />}</section></main>;
+      ) : !configured ? <p>Hãy <Link href="/dashboard/shipping">kết nối GHN thử nghiệm</Link> trước khi tạo vận đơn.</p> : !eligible ? <p role="alert" className="ghn-shipment-error">Đơn cần có hình thức giao hàng, đã được xác nhận và không có yêu cầu hủy đang chờ.</p> : <ShipmentForm storeId={store.id} orderId={order.id} provinces={provinces} locationsError={locationsError} quote={quote} previous={shipment?.request_payload || null} pending={shipment?.state === "pending"} />}</section></main>;
 }

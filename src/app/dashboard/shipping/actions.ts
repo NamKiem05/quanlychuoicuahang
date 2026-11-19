@@ -4,8 +4,30 @@ import { getMerchantContext } from "../data";
 import { requireExpectedStore } from "@/lib/active-store";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptGhnToken, encryptGhnToken, verifyGhnShop } from "@/lib/shipping/ghn";
+import { readDimensions } from "@/lib/shipping/packaging";
 
 type Result = { ok:boolean; message:string };
+
+export async function saveGhnPackaging(_previous: Result, form: FormData): Promise<Result> {
+  const store = await authorized(form);
+  if (!store) return { ok: false, message: "Chỉ chủ cửa hàng được cấu hình đóng gói." };
+  const dimensions = readDimensions(form, true);
+  const kind = form.get("kind");
+  const packingRule = form.get("packing_rule");
+  if (!dimensions || (kind !== "box" && kind !== "bag") || (packingRule !== "single" && packingRule !== "stack")) {
+    return { ok: false, message: "Kiểm tra loại bao bì, bốn thông số và quy tắc đóng gói." };
+  }
+  try {
+    const { error } = await createAdminClient().from("store_ghn_packaging").upsert({
+      store_id: store.id, kind, packing_rule: packingRule, ...dimensions,
+    });
+    if (error) throw error;
+    revalidatePath("/dashboard/shipping");
+    return { ok: true, message: "Đã lưu cấu hình đóng gói." };
+  } catch {
+    return { ok: false, message: "Chưa lưu được cấu hình đóng gói." };
+  }
+}
 async function authorized(form:FormData) {
   const ctx=await getMerchantContext();
   if(!ctx.store || ctx.membership?.role !== "owner") return null;
