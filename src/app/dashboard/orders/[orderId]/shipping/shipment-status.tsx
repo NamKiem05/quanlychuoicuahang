@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useTransition } from "react";
 import { syncShipmentStatus } from "./actions";
 
 export default function ShipmentStatus({ storeId, orderId, canSync }: {
@@ -9,6 +10,23 @@ export default function ShipmentStatus({ storeId, orderId, canSync }: {
   canSync: boolean;
 }) {
   const [result, action, pending] = useActionState(syncShipmentStatus, { ok: false, message: "" });
+  const router = useRouter();
+  const [refreshing, startRefresh] = useTransition();
+
+  useEffect(() => {
+    if (!canSync || pending || refreshing) return;
+
+    function refreshWhenVisible() {
+      if (!document.hidden) startRefresh(() => router.refresh());
+    }
+
+    const interval = window.setInterval(refreshWhenVisible, 5_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [canSync, pending, refreshing, router]);
 
   return (
     <form action={action}>
