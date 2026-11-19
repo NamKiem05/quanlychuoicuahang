@@ -8,12 +8,14 @@ export default function OrderDetailsModal({
   subtitle,
   variant = "merchant",
   openOnLoad = false,
+  triggerLabel = "Xem",
   children,
 }: {
   orderCode: string;
   subtitle: string;
   variant?: "admin" | "merchant";
   openOnLoad?: boolean;
+  triggerLabel?: string;
   children: ReactNode;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -77,7 +79,7 @@ export default function OrderDetailsModal({
         aria-expanded={isOpen}
         onClick={() => setIsOpen(true)}
       >
-        Xem
+        {triggerLabel}
       </button>
       {isOpen ? createPortal(
         <div

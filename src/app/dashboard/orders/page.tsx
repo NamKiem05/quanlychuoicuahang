@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
+import SidebarIcon from "@/app/sidebar-icon";
 import { redirect } from "next/navigation";
 import { dashboardMessages, formatPrice, getMerchantContext, orderStatusLabels } from "../data";
 import Toast from "@/app/toast";
@@ -12,7 +14,7 @@ import "@/app/order-list-status.css";
 import "./order-list.css";
 import { filterParams, ordersQuery, readOrderFilters, type OrderParams } from "./order-filters";
 import PrintOrdersButton from "./print-orders-button";
-import OrderActionsMenu from "./order-actions-menu";
+import OrderDetailActions from "./order-actions-menu";
 
 export const metadata: Metadata = { title: "Đơn hàng | Quản lý cửa hàng" };
 
@@ -29,6 +31,14 @@ const paymentStatusLabels: Record<string, string> = {
 };
 
 type OrderEvent = { id: number; order_id: string; event_type: string; old_value: string | null; new_value: string | null; created_at: string };
+type OrderItem = {
+  id: string;
+  order_id: string;
+  product_name_snapshot: string;
+  unit_price_snapshot_vnd: number;
+  quantity: number;
+  products: { image_url: string | null } | null;
+};
 function describeEvent(event: OrderEvent) {
   const value = event.new_value ?? "";
   if (event.event_type === "status") return `Trạng thái đơn: ${orderStatusLabels[value] ?? value}`;
@@ -67,7 +77,8 @@ export default async function MerchantOrdersPage({ searchParams }: { searchParam
   const refundableOrderIds = orders?.filter(isRefundableOrder).map((order) => order.id) ?? [];
   const [{ data: orderItems, error: itemsError }, refunds] = orderIds.length
     ? await Promise.all([
-      supabase.from("order_items").select("id, order_id, product_name_snapshot, unit_price_snapshot_vnd, quantity").eq("store_id", storeId).in("order_id", orderIds),
+      supabase.from("order_items").select("id, order_id, product_name_snapshot, unit_price_snapshot_vnd, quantity, products(image_url)").eq("store_id", storeId).in("order_id", orderIds)
+        .overrideTypes<OrderItem[], { merge: false }>(),
       refundableOrderIds.length
         ? supabase.from("orders").select("id, refunded_at, refund_amount_vnd").eq("store_id", storeId).in("id", refundableOrderIds)
         : { data: [], error: null },
@@ -149,7 +160,7 @@ export default async function MerchantOrdersPage({ searchParams }: { searchParam
                 <td><div className="admin-table-payment"><span>{paymentMethodLabels[order.payment_method] ?? order.payment_method}</span><small className={paymentIsSettled ? "is-paid" : "is-unpaid"}>{paymentLabel}</small></div></td>
                 <td><time className="admin-order-time">{createdAt}</time></td>
                 <td><div className="merchant-order-row-actions">
-                  <OrderDetailsModal orderCode={order.public_code} subtitle={`${order.customer_name} · ${createdAt}`} variant="admin">
+                  <OrderDetailsModal orderCode={order.public_code} subtitle={`${order.customer_name} · ${createdAt}`} variant="admin" triggerLabel="Xem chi tiết" openOnLoad={query.detail === order.id}>
                     <div className="order-modal-overview">
                       <div><small>Khách hàng</small><b>{order.customer_name}</b><a href={`tel:${order.customer_phone}`}>{order.customer_phone}</a></div>
                       <div><small>Trạng thái đơn</small><span className={`status-badge status-${order.status}`}>{order.status === "ready" && order.fulfillment === "delivery" ? "Sẵn sàng giao" : orderStatusLabels[order.status] ?? order.status}</span></div>
@@ -160,7 +171,17 @@ export default async function MerchantOrdersPage({ searchParams }: { searchParam
                     </div>
                     <section className="order-modal-section">
                       <h3>Sản phẩm trong đơn</h3>
-                      {itemsError ? <p className="order-modal-note" role="alert">Chưa tải được danh sách sản phẩm.</p> : items.length ? <ul className="order-modal-item-list">{items.map((item) => <li key={item.id}><span>{item.product_name_snapshot}<small className="order-item-unit">{item.quantity} × {formatPrice(Number(item.unit_price_snapshot_vnd))}</small></span><b>{formatPrice(Number(item.unit_price_snapshot_vnd) * item.quantity)}</b></li>)}</ul> : <p className="order-modal-note">Không có thông tin sản phẩm.</p>}
+                      {itemsError ? <p className="order-modal-note" role="alert">Chưa tải được danh sách sản phẩm.</p> : items.length ? <ul className="order-modal-item-list">{items.map((item) => <li key={item.id}>
+                        <div className="merchant-order-item-product">
+                          <span className="merchant-order-item-image">
+                            {item.products?.image_url
+                              ? <Image src={item.products.image_url} width={48} height={48} alt="" unoptimized />
+                              : <SidebarIcon name="cart" />}
+                          </span>
+                          <span>{item.product_name_snapshot}<small className="order-item-unit">{item.quantity} × {formatPrice(Number(item.unit_price_snapshot_vnd))}</small></span>
+                        </div>
+                        <b>{formatPrice(Number(item.unit_price_snapshot_vnd) * item.quantity)}</b>
+                      </li>)}</ul> : <p className="order-modal-note">Không có thông tin sản phẩm.</p>}
                       <div className="order-price-breakdown"><div><span>Tiền sản phẩm</span><b>{formatPrice(Number(order.subtotal_vnd))}</b></div><div><span>Giảm giá{order.promotion_code ? ` · ${order.promotion_code}` : ""}</span><b>− {formatPrice(Number(order.discount_vnd ?? 0))}</b></div><div><span>Phí vận chuyển</span><b>{formatPrice(Number(order.delivery_fee_vnd ?? 0))}</b></div></div>
                       <div className="order-modal-total"><span>Tổng thanh toán</span><b>{formatPrice(Number(order.total_vnd))}</b></div>
                     </section>
@@ -183,8 +204,8 @@ export default async function MerchantOrdersPage({ searchParams }: { searchParam
                       {order.cancellation_request_status === "declined" && <p className="order-modal-note">Yêu cầu hủy gần nhất đã bị từ chối.</p>}
                       {refund && <p className="order-modal-note">{refund.refunded_at ? `Đã ghi nhận hoàn ${formatPrice(Number(refund.refund_amount_vnd))} lúc ${new Date(refund.refunded_at).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}.` : `Chờ hoàn ${formatPrice(Number(order.total_vnd))}.`}</p>}
                     </section>}
+                    <OrderDetailActions orderId={order.id} orderCode={order.public_code} status={order.status} fulfillment={order.fulfillment} cancellationPending={cancellationPending} canConfirmTransfer={canConfirmTransfer} canRefund={Boolean(refund && !refund.refunded_at && !refunds.error)} owner={membership?.role === "owner"} filters={filterParams(filters)} page={currentPage} />
                   </OrderDetailsModal>
-                  <OrderActionsMenu orderId={order.id} orderCode={order.public_code} status={order.status} fulfillment={order.fulfillment} cancellationPending={cancellationPending} canConfirmTransfer={canConfirmTransfer} canRefund={Boolean(refund && !refund.refunded_at && !refunds.error)} owner={membership?.role === "owner"} filters={filterParams(filters)} page={currentPage} />
                 </div></td>
               </tr>
             );

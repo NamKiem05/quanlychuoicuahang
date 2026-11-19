@@ -22,5 +22,30 @@
 .order-details-modal .order-item-unit { display: block; margin-top: 3px; color: #8999aa; font-size: 11px; }
 .order-details-modal .order-price-breakdown { display: grid; gap: 9px; margin-top: 15px; padding: 13px; border-radius: 9px; background: #f7faff; color: #75879f; font-size: 12px; }.order-details-modal .order-price-breakdown > div { display: flex; justify-content: space-between; gap: 12px; }.order-details-modal .order-price-breakdown b { color: #405b7a; }
 .order-details-modal .order-history { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }.order-details-modal .order-history li { position: relative; display: grid; gap: 4px; margin-left: 5px; padding: 0 0 15px 18px; border-left: 1px solid #dce8f6; }.order-details-modal .order-history li::before { position: absolute; top: 2px; left: -5px; width: 9px; height: 9px; border-radius: 50%; background: #4788db; content: ""; }.order-details-modal .order-history li:last-child { border-left-color: transparent; }.order-details-modal .order-history b { color: #3b5574; font-size: 12px; }.order-details-modal .order-history time { color: #93a2b4; font-size: 11px; }
-.merchant-order-row-actions { display: flex; align-items: center; gap: 7px; }.merchant-order-more { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid #dae5f2; border-radius: 8px; background: #fff; color: #526c8c; font-size: 22px; line-height: 1; cursor: pointer; }.merchant-order-more:hover,.merchant-order-more[aria-expanded="true"] { background: #eef5ff; color: #256bd0; }.merchant-order-action-menu { position: fixed; z-index: 1000; display: grid; width: 230px; max-height: min(340px, calc(100vh - 16px)); overflow-y: auto; padding: 6px; border: 1px solid #dee7f2; border-radius: 11px; background: white; box-shadow: 0 12px 36px #1d365e33; }.merchant-order-action-menu form { margin: 0; }.merchant-order-action-menu :is(button,a) { display: block; width: 100%; padding: 10px; border: 0; border-radius: 7px; background: transparent; color: #36516f; font: 600 12px inherit; text-align: left; text-decoration: none; cursor: pointer; }.merchant-order-action-menu :is(button,a):hover { background: #f1f6fd; }.merchant-order-action-menu .is-danger { color: #c64747; }.merchant-order-action-menu p { margin: 4px 4px 3px; padding: 8px 5px 2px; border-top: 1px solid #edf1f6; color: #8393a7; font-size: 10px; line-height: 1.5; }.merchant-order-action-menu :is(button,a):focus-visible,.merchant-order-more:focus-visible { outline: 2px solid #78aaf0; outline-offset: 2px; }
-.merchant-order-action-menu :is(button,a) { font-family: inherit; font-size: 12px; font-weight: 600; }.merchant-dashboard-shell .merchant-orders-page .merchant-order-results .admin-data-table th:nth-child(8) { width: 110px; }
+.merchant-order-row-actions { display: flex; align-items: center; }
+.merchant-order-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.merchant-order-detail-actions form { margin: 0; }
+.merchant-order-detail-actions :is(button, a) {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid #dae5f2;
+  border-radius: 8px;
+  background: #f7faff;
+  color: #235d9e;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.merchant-order-detail-actions :is(button, a):hover { background: #eaf3ff; }
+.merchant-order-detail-actions .is-danger { color: #a93535; background: #fff5f4; border-color: #f1d5d2; }
+.merchant-order-detail-actions :is(button, a):focus-visible { outline: 2px solid #78aaf0; outline-offset: 2px; }
+.merchant-order-detail-actions p { flex-basis: 100%; margin: 0; }
+.merchant-dashboard-shell .merchant-orders-page .merchant-order-results .admin-data-table th:nth-child(8) { width: 110px; }
+
+.merchant-order-item-product { display: flex; align-items: center; min-width: 0; gap: 10px; overflow-wrap: anywhere; }
+.merchant-order-item-image { display: grid; place-items: center; flex: 0 0 48px; height: 48px; overflow: hidden; border: 1px solid #e2eaf5; border-radius: 8px; background: #f3f7fc; color: #6983a2; }
+.merchant-order-item-image img { width: 100%; height: 100%; object-fit: cover; }

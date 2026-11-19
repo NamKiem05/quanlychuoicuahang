@@ -52,6 +52,10 @@ function vietnamToday() {
 
 function orderListRedirect(formData: FormData, message: string) {
   const params = new URLSearchParams({ message });
+  const orderId = formText(formData, "order_id");
+  if (formData.get("reopen_order_detail") === "yes" && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(orderId)) {
+    params.set("detail", orderId);
+  }
   const query = formText(formData, "filter_query").replace(/[^\p{L}\p{N}\s+-]/gu, "").slice(0, 60).trim();
   const status = formText(formData, "filter_status");
   const validStatuses = ["pending", "confirmed", "preparing", "ready", "out_for_delivery", "completed", "cancelled", "rejected"];
