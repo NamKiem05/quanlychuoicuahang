@@ -20,21 +20,26 @@ export async function POST(request: Request) {
     return new Response(null, { status: 400 });
   }
   if (body.Type !== "switch_status") return new Response(null, { status: 204 });
+  const clientOrderCode = "ClientOrderCode" in body ? body.ClientOrderCode : undefined;
+  const cancellationWithoutClientCode = "Status" in body && body.Status === "cancel" &&
+    (clientOrderCode == null || clientOrderCode === "");
   if (!("ShopID" in body) || typeof body.ShopID !== "number" || !Number.isSafeInteger(body.ShopID) || body.ShopID <= 0 ||
-      !("OrderCode" in body) || typeof body.OrderCode !== "string" || !/^[A-Z0-9]{1,64}$/.test(body.OrderCode) ||
-      !("ClientOrderCode" in body) || typeof body.ClientOrderCode !== "string") {
+      !("OrderCode" in body) || typeof body.OrderCode !== "string" || !/^[A-Z0-9]{1,64}$/.test(body.OrderCode)) {
     return new Response(null, { status: 400 });
   }
-  if (!/^GD-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(body.ClientOrderCode)) {
+  const hasGrowdeskCode = typeof clientOrderCode === "string" &&
+    /^GD-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(clientOrderCode);
+  if (!hasGrowdeskCode && !cancellationWithoutClientCode) {
     return new Response(null, { status: 204 });
   }
 
   try {
     const admin = createAdminClient();
-    const { data: shipment, error } = await admin.from("store_ghn_shipments")
-      .select("store_id,order_id")
-      .eq("shop_id", body.ShopID).eq("order_code", body.OrderCode)
-      .eq("client_order_code", body.ClientOrderCode).eq("state", "created").maybeSingle();
+    const query = admin.from("store_ghn_shipments")
+      .select("store_id,order_id,client_order_code")
+      .eq("shop_id", body.ShopID).eq("order_code", body.OrderCode).eq("state", "created");
+    if (hasGrowdeskCode) query.eq("client_order_code", clientOrderCode);
+    const { data: shipment, error } = await query.maybeSingle();
     if (error) throw error;
     if (!shipment) return new Response(null, { status: 204 });
 
@@ -50,7 +55,7 @@ export async function POST(request: Request) {
       orderId: shipment.order_id,
       shopId: body.ShopID,
       orderCode: body.OrderCode,
-      clientOrderCode: body.ClientOrderCode,
+      clientOrderCode: shipment.client_order_code,
     }, connection.token_ciphertext);
     revalidatePath(`/dashboard/orders/${shipment.order_id}/shipping`);
     return new Response(null, { status: 204 });

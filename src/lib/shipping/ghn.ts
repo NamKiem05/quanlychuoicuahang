@@ -18,9 +18,12 @@ export async function getGhnShipmentStatus(
     data?: { order_code?: unknown; client_order_code?: unknown; shop_id?: unknown; status?: unknown };
   } | null;
   const detail = result?.data;
+  // GHN Staging may clear the client order code when a shipment is cancelled.
+  const cancelledWithoutClientCode = detail?.status === "cancel" &&
+    (detail.client_order_code == null || detail.client_order_code === "");
   if (!response.ok || result?.code !== 200 || !detail ||
       detail.order_code !== shipment.orderCode || detail.shop_id !== shipment.shopId ||
-      detail.client_order_code !== shipment.clientOrderCode ||
+      (detail.client_order_code !== shipment.clientOrderCode && !cancelledWithoutClientCode) ||
       typeof detail.status !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(detail.status)) {
     throw new Error("GHN_STATUS_UNAVAILABLE");
   }
