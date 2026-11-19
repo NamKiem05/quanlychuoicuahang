@@ -645,6 +645,10 @@ footer > span:last-child b { margin-left: 5px; color: var(--green); font-weight:
 .delivery-address-fields .checkout-address-fields label { display: grid; gap: 7px; min-width: 0; color: var(--green); font-size: 12px; font-weight: 600; }
 .delivery-address-fields .checkout-address-fields :is(select, input:not([type="hidden"])) { width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid #e2ded4; border-radius: 4px; background: #fffdf8; color: var(--ink); font: inherit; }
 @media (max-width: 480px) { .checkout-address-fields { grid-template-columns: minmax(0, 1fr); } }
+.checkout-delivery-address { display: grid; gap: 12px; min-width: 0; }
+.checkout-delivery-address h3, .delivery-address-fields h3 { margin: 0; font-size: 14px; font-weight: 700; }
+.checkout-delivery-address .checkout-address-fields, .delivery-address-fields .checkout-address-fields { grid-template-columns: minmax(0, 1fr); }
+.checkout-delivery-address .store-location-map, .delivery-address-fields .store-location-map { height: clamp(220px, 43vw, 312px); }
 .delivery-address-fields textarea { width: 100%; padding: 10px 11px; border: 1px solid #e2ded4; border-radius: 4px; outline: 0; background: #fffdf8; color: var(--ink); font-size: 11px; resize: vertical; }
 .delivery-address-fields textarea:focus { border-color: #98a287; box-shadow: 0 0 0 3px #52683f13; }
 .delivery-location-button { align-self: flex-start; min-height: 34px; padding: 0 11px; border: 1px solid #dce1d3; border-radius: 4px; background: #f4f6ef; color: var(--green); font-size: 9px; font-weight: 600; cursor: pointer; }

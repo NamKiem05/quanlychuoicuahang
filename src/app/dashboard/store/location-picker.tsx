@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import Image from "next/image";
 import { updateStoreLocation } from "../actions";
+import type { Position } from "@/lib/checkout-location";
 
 const TILE_SIZE = 256;
 const DEFAULT_CENTER = { latitude: 10.7769, longitude: 106.7009 };
 const TILE_URL = process.env.NEXT_PUBLIC_MAP_TILE_URL || "https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}.png";
 
-type Position = { latitude: number; longitude: number };
 type Tile = { key: string; url: string; left: number; top: number };
 type DragState = { pointerId: number; startX: number; startY: number; center: Position; moved: boolean };
 
@@ -64,10 +64,14 @@ export default function StoreLocationPicker({
   initialLatitude,
   initialLongitude,
   embedded = false,
+  delivery = false,
+  onPin,
 }: {
   initialLatitude: number | null;
   initialLongitude: number | null;
   embedded?: boolean;
+  delivery?: boolean;
+  onPin?: (position: Position) => void;
 }) {
   const initialPosition: Position | null = initialLatitude == null || initialLongitude == null
     ? null
@@ -81,6 +85,9 @@ export default function StoreLocationPicker({
   const [isDragging, setIsDragging] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
+  const locationRequest = useRef(0);
+
+  useEffect(() => () => { locationRequest.current += 1; }, []);
 
   useEffect(() => {
     const element = mapRef.current;
@@ -140,30 +147,38 @@ export default function StoreLocationPicker({
 
     if (!drag.moved && mapRef.current) {
       const rect = mapRef.current.getBoundingClientRect();
-      setPosition(unproject(
+      const next = unproject(
         project(finalCenter, zoom).x + event.clientX - rect.left - rect.width / 2,
         project(finalCenter, zoom).y + event.clientY - rect.top - rect.height / 2,
         zoom,
-      ));
-      setMessage("Đã chọn vị trí. Bấm lưu để cập nhật.");
+      );
+      setPosition(next);
+      locationRequest.current += 1;
+      onPin?.(next);
+      setMessage(delivery ? "" : "Đã chọn vị trí. Bấm lưu để cập nhật.");
     }
   };
 
   const useCurrentLocation = () => {
     if (!navigator.geolocation) {
-      setMessage("Trình duyệt này không hỗ trợ xác định vị trí. Bạn có thể kéo bản đồ đến cửa hàng.");
+      setMessage("Trình duyệt chưa hỗ trợ lấy vị trí. Bạn có thể đặt ghim trên bản đồ.");
       return;
     }
     setMessage("Đang xác định vị trí…");
+    const requestId = ++locationRequest.current;
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
+        if (requestId !== locationRequest.current) return;
         const next = { latitude: coords.latitude, longitude: coords.longitude };
         setPosition(next);
+        onPin?.(next);
         setCenter(next);
         setZoom(16);
-        setMessage("Đã lấy vị trí hiện tại. Nếu cần, hãy kéo bản đồ để chỉnh ghim rồi lưu.");
+        setMessage(delivery ? "" : "Đã lấy vị trí hiện tại. Nếu cần, hãy kéo bản đồ để chỉnh ghim rồi lưu.");
       },
-      () => setMessage("Không lấy được vị trí. Hãy cho phép trình duyệt truy cập vị trí hoặc chọn trực tiếp trên bản đồ."),
+      () => {
+        if (requestId === locationRequest.current) setMessage("Không lấy được vị trí. Hãy cho phép trình duyệt truy cập vị trí hoặc chọn trực tiếp trên bản đồ.");
+      },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
     );
   };
@@ -177,12 +192,12 @@ export default function StoreLocationPicker({
 
   const fields = (
     <>
-      <p className="dashboard-help">Bấm vào bản đồ để đặt ghim, kéo bản đồ để di chuyển. Bạn cũng có thể dùng vị trí hiện tại nếu đang ở cửa hàng.</p>
+      <p className="dashboard-help">{delivery ? "Bấm để đặt ghim tại điểm nhận hàng hoặc dùng vị trí hiện tại." : "Bấm vào bản đồ để đặt ghim, kéo bản đồ để di chuyển. Bạn cũng có thể dùng vị trí hiện tại nếu đang ở cửa hàng."}</p>
       <div
         className="store-location-map"
         ref={mapRef}
         role="application"
-        aria-label="Bản đồ chọn vị trí cửa hàng"
+        aria-label={delivery ? "Bản đồ địa chỉ giao hàng" : "Bản đồ chọn vị trí cửa hàng"}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -224,12 +239,12 @@ export default function StoreLocationPicker({
       </div>
       {tilesFailed && <p className="store-location-map-error" role="alert">Không tải được nền bản đồ. Hãy kiểm tra kết nối hoặc cấu hình nhà cung cấp bản đồ.</p>}
       <div className="store-location-selected">
-        <span className={position ? "is-selected" : ""}><i />{position ? "Đã chọn vị trí cửa hàng" : "Chưa chọn vị trí cửa hàng"}</span>
-        {position && <code>{position.latitude.toFixed(6)}, {position.longitude.toFixed(6)}</code>}
+        <span className={position ? "is-selected" : ""} role={delivery ? "status" : undefined}><i />{delivery ? (position ? "Đã ghim vị trí giao hàng" : "Chưa ghim vị trí giao hàng") : (position ? "Đã chọn vị trí cửa hàng" : "Chưa chọn vị trí cửa hàng")}</span>
+        {position && !delivery && <code>{position.latitude.toFixed(6)}, {position.longitude.toFixed(6)}</code>}
       </div>
       {message && <p className="store-location-message" role="status">{message}</p>}
-      <input type="hidden" name="latitude" value={position?.latitude ?? ""} />
-      <input type="hidden" name="longitude" value={position?.longitude ?? ""} />
+      <input type="hidden" name={delivery ? "deliveryLatitude" : "latitude"} value={position?.latitude ?? ""} />
+      <input type="hidden" name={delivery ? "deliveryLongitude" : "longitude"} value={position?.longitude ?? ""} />
     </>
   );
 

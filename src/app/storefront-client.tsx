@@ -244,10 +244,6 @@ export default function StorefrontClient({ store, categories, products, reviews,
   const [ghnQuote, setGhnQuote] = useState<{ id: string; address: string; fee: number; expiresAt: string } | null>(null);
   const [ghnQuoteError, setGhnQuoteError] = useState("");
   const [quoteRetry, setQuoteRetry] = useState(0);
-  const deliveryLocationRequest = useRef(0);
-  const [deliveryLocation, setDeliveryLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [deliveryLocationMessage, setDeliveryLocationMessage] = useState("");
-  const [isLocatingDelivery, setIsLocatingDelivery] = useState(false);
   const [orderDelivery, setOrderDelivery] = useState<OrderDelivery | null>(null);
   const [orderError, setOrderError] = useState("");
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
@@ -589,39 +585,6 @@ export default function StorefrontClient({ store, categories, products, reviews,
     setCheckoutAddress(address);
     setGhnQuote(null);
     setGhnQuoteError("");
-    clearDeliveryLocation();
-  }
-
-  function clearDeliveryLocation() {
-    deliveryLocationRequest.current += 1;
-    setDeliveryLocation(null);
-    setDeliveryLocationMessage("");
-    setIsLocatingDelivery(false);
-  }
-
-  function requestDeliveryLocation() {
-    clearDeliveryLocation();
-    const requestId = deliveryLocationRequest.current;
-    if (!navigator.geolocation) {
-      setDeliveryLocationMessage("Trình duyệt này chưa hỗ trợ lấy vị trí.");
-      return;
-    }
-
-    setIsLocatingDelivery(true);
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        if (requestId !== deliveryLocationRequest.current) return;
-        setDeliveryLocation({ latitude: coords.latitude, longitude: coords.longitude });
-        setDeliveryLocationMessage("Đã ghi nhận vị trí giao hàng của bạn.");
-        setIsLocatingDelivery(false);
-      },
-      () => {
-        if (requestId !== deliveryLocationRequest.current) return;
-        setDeliveryLocationMessage("Chưa lấy được vị trí. Hãy cho phép trình duyệt truy cập vị trí rồi thử lại.");
-        setIsLocatingDelivery(false);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
-    );
   }
 
   async function sendOrderConfirmationEmail(publicCode: string, customerPhone: string) {
@@ -713,7 +676,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
     }
     if (requestedFulfillment === "delivery" && !useGhn && (!deliveryLatitude || !deliveryLongitude)) {
       setIsSubmittingOrder(false);
-      setOrderError("Hãy lấy vị trí giao hàng trước khi gửi đơn.");
+      setOrderError("Hãy ghim vị trí giao hàng trên bản đồ trước khi gửi đơn.");
       return;
     }
 
@@ -856,11 +819,11 @@ export default function StorefrontClient({ store, categories, products, reviews,
       }} cartView={retailCartView} checkoutView={retailCheckoutView} onExitCart={() => { changeCheckoutAddress(null); setRetailCartView(false); setRetailCheckoutView(false); }} renderCheckout={() => <RetailCheckout
         lines={cartLines} cartCount={cartCount} subtotal={cartTotal} discount={promotionDiscount} total={checkoutTotal}
         storeName={store.name} deliveryEnabled={store.delivery_enabled} deliveryFee={deliveryFee} ghnEnabled={Boolean(store.ghnCheckoutEnabled)} quoteReady={quoteReady} quoteStatus={quoteStatus} deliveryRadius={store.delivery_radius_m} bankTransfer={Boolean(store.bankTransfer)}
-        fulfillment={fulfillmentMethod} payment={paymentMethod} deliveryLocation={deliveryLocation} deliveryLocationMessage={deliveryLocationMessage} locating={isLocatingDelivery}
+        fulfillment={fulfillmentMethod} payment={paymentMethod}
         promoInput={promotionCodeInput} promoCode={promotionForCart?.code ?? null} promoFeedback={promotionFeedback} promoStale={Boolean(appliedPromotion && !promotionForCart)}
         acceptsOrders={acceptsOrders} submitting={isSubmittingOrder} applying={isApplyingPromotion} error={orderError}
         onBack={() => { changeCheckoutAddress(null); setOrderError(""); setRetailCheckoutView(false); setRetailCartView(true); }} onSubmit={placeOrder}
-        onFulfillment={changeFulfillmentMethod} onPayment={setPaymentMethod} onAddressChange={changeCheckoutAddress} onLocate={requestDeliveryLocation}
+        onFulfillment={changeFulfillmentMethod} onPayment={setPaymentMethod} onAddressChange={changeCheckoutAddress}
         onPromoInput={(value) => { setPromotionCodeInput(value); setAppliedPromotion(null); setPromotionFeedback(null); }}
         onPromoApply={() => { void applyPromotion(); }} onPromoClear={() => { setAppliedPromotion(null); setPromotionCodeInput(""); setPromotionFeedback(null); }}
       />} renderCart={(openDetail) => <RetailCart lines={cartLines} cartCount={cartCount} subtotal={cartTotal} discount={promotionDiscount} appliedCode={promotionForCart?.code ?? null} promotionInput={promotionCodeInput} promotionFeedback={promotionFeedback} promotionStale={Boolean(appliedPromotion && !promotionForCart)} applying={isApplyingPromotion} acceptsOrders={acceptsOrders} checkoutError={retailCheckoutError} recommendations={products.filter((product) => !cart.some((line) => line.productId === product.id))} onChange={changeQuantity} onPromotionInput={(value) => { setPromotionCodeInput(value); setAppliedPromotion(null); setPromotionFeedback(null); }} onApply={() => { void applyPromotion(); }} onClear={() => { setAppliedPromotion(null); setPromotionCodeInput(""); setPromotionFeedback(null); }} onContinue={() => { setRetailCartView(false); resetMenu(true); }} onCheckout={(trigger) => { void startRetailCheckout(trigger); }} onDetail={openDetail} />} cartQuantity={(id) => cart.filter((line) => line.productId === id).reduce((sum, line) => sum + line.quantity, 0)} /> : <>
@@ -1244,21 +1207,12 @@ export default function StorefrontClient({ store, categories, products, reviews,
                 </fieldset>
                 {fulfillmentMethod === "delivery" && (
                   <div className="delivery-address-fields">
+                    <h3>Địa chỉ giao hàng</h3>
                     <CheckoutAddressFields onChange={changeCheckoutAddress} />
                     {quoteStatus}
-                    {!ghnDelivery && <>
-                    <button className="delivery-location-button" type="button" onClick={requestDeliveryLocation} disabled={isLocatingDelivery}>
-                      {isLocatingDelivery ? "Đang xác định vị trí..." : deliveryLocation ? "Cập nhật vị trí giao hàng" : "Dùng vị trí hiện tại"}
-                    </button>
-                    {deliveryLocation && <small className="delivery-coordinates">Đã lấy tọa độ giao hàng.</small>}
-                    {deliveryLocationMessage && <p className="delivery-location-message" role="status">{deliveryLocationMessage}</p>}
-                    <input type="hidden" name="deliveryLatitude" value={deliveryLocation?.latitude ?? ""} />
-                    <input type="hidden" name="deliveryLongitude" value={deliveryLocation?.longitude ?? ""} />
-                    <p className="dashboard-help">Hãy cho phép trình duyệt truy cập vị trí tại điểm nhận hàng. Chúng tôi sẽ kiểm tra bán kính trước khi xác nhận đơn.</p>
-                    </>}
                   </div>
                 )}
-                <label>{isRetail ? "Ghi chú cho cửa hàng" : "Ghi chú cho quán"} <span className="optional-label">Không bắt buộc</span><textarea name="customerNote" rows={3} maxLength={500} placeholder={isRetail ? "Ghi chú cho đơn hàng..." : "Ít cay, để riêng nước sốt..."} /></label>
+                <label>{fulfillmentMethod === "delivery" ? "Ghi chú giao hàng" : isRetail ? "Ghi chú cho cửa hàng" : "Ghi chú cho quán"} <span className="optional-label">Không bắt buộc</span><textarea name="customerNote" rows={3} maxLength={500} placeholder={fulfillmentMethod === "delivery" ? "Ví dụ: Gọi trước khi giao hàng" : isRetail ? "Ghi chú cho đơn hàng..." : "Ít cay, để riêng nước sốt..."} /></label>
                 <fieldset className="payment-method-options">
                   <legend>Phương thức thanh toán</legend>
                   <label className={paymentMethod === "cash_on_pickup" ? "payment-method-option selected" : "payment-method-option"}>
