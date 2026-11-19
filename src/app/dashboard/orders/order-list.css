@@ -42,6 +42,10 @@
 }
 .merchant-order-detail-actions :is(button, a):hover { background: #eaf3ff; }
 .merchant-order-detail-actions .is-danger { color: #a93535; background: #fff5f4; border-color: #f1d5d2; }
+.merchant-order-detail-actions .is-danger:hover { background: #ffebe8; }
+.merchant-order-detail-actions .is-status-next { color: #fff; background: #22764e; border-color: #22764e; }
+.merchant-order-detail-actions .is-status-next:hover { background: #185f3e; border-color: #185f3e; }
+.merchant-order-cancellation-actions { display: flex; flex: 0 0 100%; flex-wrap: wrap; gap: 8px; padding-top: 10px; border-top: 1px solid #e7edf4; }
 .merchant-order-detail-actions :is(button, a):focus-visible { outline: 2px solid #78aaf0; outline-offset: 2px; }
 .merchant-order-detail-actions p { flex-basis: 100%; margin: 0; }
 .merchant-dashboard-shell .merchant-orders-page .merchant-order-results .admin-data-table th:nth-child(8) { width: 110px; }
