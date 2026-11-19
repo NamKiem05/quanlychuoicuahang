@@ -43,7 +43,7 @@ const checkedAtFormat = new Intl.DateTimeFormat("vi-VN", {
 export default async function ShipmentPage({params}:{params:Promise<{orderId:string}>}) {
   const {orderId}=await params;if(!uuid.test(orderId))notFound();
   const {store,membership,supabase}=await getMerchantContext();if(!store)redirect("/dashboard");if(membership?.role!=="owner")redirect("/dashboard/orders");
-  const {data:order,error}=await supabase.from("orders").select("id,public_code,customer_name,customer_phone,delivery_address,fulfillment,status,payment_method,payment_status,total_vnd,cancellation_request_status").eq("id",orderId).eq("store_id",store.id).maybeSingle();if(error || !order)notFound();
+  const {data:order,error}=await supabase.from("orders").select("id,public_code,customer_name,customer_phone,delivery_address,fulfillment,status,payment_method,payment_status,total_vnd,delivery_fee_vnd,cancellation_request_status").eq("id",orderId).eq("store_id",store.id).maybeSingle();if(error || !order)notFound();
   let shipment: {
     state: string;
     shop_id: number;
@@ -94,7 +94,11 @@ export default async function ShipmentPage({params}:{params:Promise<{orderId:str
   return <main className="admin-content ghn-shipment-page"><Link className="ghn-shipment-back" href="/dashboard/orders">← Quay lại đơn hàng</Link><header><span>VẬN CHUYỂN / GHN THỬ NGHIỆM</span><h1>{shipment?.state === "created" ? "Vận đơn GHN" : "Tạo vận đơn GHN"}</h1><p>Đơn hàng {order.public_code} · {store.name}</p></header><section className="ghn-shipment-card"><div className="ghn-shipment-summary"><div><small>Người nhận</small><b>{order.customer_name}</b><span>{order.customer_phone}</span></div><div><small>Địa chỉ trong đơn</small><b>{order.delivery_address || "Chưa có địa chỉ giao hàng"}</b></div><div><small>Tổng đơn</small><b>{formatPrice(Number(order.total_vnd))}</b><span>{order.payment_status === "paid" ? "Đã thanh toán · không thu hộ" : "Chưa thanh toán"}</span></div></div><div className="ghn-shipment-note">Phí GHN được xem trước cho chủ cửa hàng và không tự thay đổi tổng tiền đã đặt. Dữ liệu được gửi tới GHN Staging, không tạo vận đơn thật.</div>{loadError ? <p role="alert" className="ghn-shipment-error">Chưa tải được dữ liệu GHN. Hãy kiểm tra cấu hình máy chủ và cập nhật cơ sở dữ liệu.</p> : shipment?.state === "created" ? (
         <div className="ghn-shipment-success">
           <b>Đã tạo vận đơn thử nghiệm</b>
-          <p>Mã vận đơn: <strong>{shipment.order_code}</strong> · Phí GHN: {formatPrice(Number(shipment.total_fee))}</p>
+          <p>Mã vận đơn: <strong>{shipment.order_code}</strong></p>
+          {shipment.request_payload && <p>Kiện thực tế: {shipment.request_payload.weight} g · {shipment.request_payload.length} × {shipment.request_payload.width} × {shipment.request_payload.height} cm.</p>}
+          <p>Phí giao hàng đã chốt với khách: <strong>{formatPrice(Number(order.delivery_fee_vnd))}</strong></p>
+          <p>Phí GHN thực tế: <strong>{formatPrice(Number(shipment.total_fee))}</strong></p>
+          {Number(shipment.total_fee) !== Number(order.delivery_fee_vnd) && <p>Chênh lệch: GHN {Number(shipment.total_fee) > Number(order.delivery_fee_vnd) ? "cao hơn" : "thấp hơn"} phí đã chốt {formatPrice(Math.abs(Number(shipment.total_fee) - Number(order.delivery_fee_vnd)))}.</p>}
           <p>Trạng thái GHN: <strong>{shipment.provider_status
             ? (Object.hasOwn(statusLabels, shipment.provider_status) ? statusLabels[shipment.provider_status] : shipment.provider_status)
             : "Chưa đồng bộ"}</strong></p>
@@ -102,5 +106,5 @@ export default async function ShipmentPage({params}:{params:Promise<{orderId:str
           {!canSync && <p>Hãy <Link href="/dashboard/shipping">kết nối lại GHN</Link> với tài khoản đã tạo vận đơn để đồng bộ.</p>}
           <ShipmentStatus storeId={store.id} orderId={order.id} canSync={canSync} />
         </div>
-      ) : !configured ? <p>Hãy <Link href="/dashboard/shipping">kết nối GHN thử nghiệm</Link> trước khi tạo vận đơn.</p> : !eligible ? <p role="alert" className="ghn-shipment-error">Đơn cần có hình thức giao hàng, đã được xác nhận và không có yêu cầu hủy đang chờ.</p> : <ShipmentForm storeId={store.id} orderId={order.id} provinces={provinces} locationsError={locationsError} quote={quote} previous={shipment?.request_payload || null} pending={shipment?.state === "pending"} />}</section></main>;
+      ) : !configured ? <p>Hãy <Link href="/dashboard/shipping">kết nối GHN thử nghiệm</Link> trước khi tạo vận đơn.</p> : !eligible ? <p role="alert" className="ghn-shipment-error">Đơn cần có hình thức giao hàng, đã được xác nhận và không có yêu cầu hủy đang chờ.</p> : <ShipmentForm key={shipment?.state ?? "new"} customerFee={Number(order.delivery_fee_vnd)} storeId={store.id} orderId={order.id} provinces={provinces} locationsError={locationsError} quote={quote} previous={shipment?.request_payload || null} pending={shipment?.state === "pending"} />}</section></main>;
 }

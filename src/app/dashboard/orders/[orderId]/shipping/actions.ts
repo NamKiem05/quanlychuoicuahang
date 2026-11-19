@@ -67,7 +67,7 @@ async function context(form:FormData) {
 function payload(form:FormData,order:{id:string;customer_name:string;customer_phone:string;delivery_address:string|null;payment_method:string;payment_status:string;total_vnd:number},quote?:GhnCheckoutSnapshot|null):GhnShipmentPayload {
   const province=quote?.province ?? String(form.get("province")||"").trim(),ward=quote?.ward ?? String(form.get("ward")||"").trim();
   const value=(field:string,max:number)=>{const raw=String(form.get(field)||"");const n=Number(raw);if(!/^\d+$/.test(raw)||!Number.isSafeInteger(n)||n<1||n>max)throw new Error("INVALID_PACKAGE");return n;};
-  const weight=quote?.weight ?? value("weight",19999),length=quote?.length ?? value("length",200),width=quote?.width ?? value("width",200),height=quote?.height ?? value("height",200);
+  const weight=value("weight",19999),length=value("length",200),width=value("width",200),height=value("height",200);
   if(!province||province.length>120||!ward||ward.length>120||!order.delivery_address||order.delivery_address.trim().length<5)throw new Error("INVALID_ADDRESS");
   if(order.payment_method==="bank_transfer" && order.payment_status!=="paid") throw new Error("PAYMENT_UNCONFIRMED");
   const cod=order.payment_status==="paid"?0:Number(order.total_vnd);
