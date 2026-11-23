@@ -1,0 +1,80 @@
+﻿test("legacy GHN tokens and Staging shipment requests still work with their original contracts", async (t) => {
+  env(t, "GHN_CREDENTIALS_ENCRYPTION_KEY", randomBytes(32).toString("base64"));
+  const encoded = encryptGhnToken(credential, id);
+  assert.match(encoded, /^v1:/);
+  assert.equal(decryptGhnToken(encoded, id), credential);
+
+  const fetch = t.mock.method(globalThis, "fetch", async (url) => String(url).endsWith("/shop/all?offset=0&limit=100")
+    ? Response.json({ code: 200, data: { shops: [{ _id: 123, status: 1, name: "Fixture" }] } })
+    : Response.json({ code: 200, data: { order_code: "DEMO123", total_fee: 21000 } }));
+  assert.deepEqual(await verifyGhnShop(credential, 123), { name: "Fixture" });
+  const result = await ghnShipmentRequest(credential, 123, "create", { client_order_code: `GD-${id}` });
+  assert.equal(result.orderCode, "DEMO123");
+  const [url, request] = fetch.mock.calls[1].arguments;
+  assert.equal(url, "https://dev-online-gateway.ghn.vn/shiip/public-api/v2/shipping-order/create");
+  assert.equal(request.headers.ShopId, "123");
+  assert.equal(JSON.parse(request.body).client_order_code, `GD-${id}`);
+});
+
+test("the phase 2 GHN check returns a sanitized timeout outcome", async (t) => {
+  env(t, "SHIPPING_CREDENTIAL_ACTIVE_VERSION", "v1");
+  env(t, "SHIPPING_CREDENTIAL_KEY_V1", randomBytes(32).toString("base64"));
+  env(t, "SHIPPING_GHN_SANDBOX_CHECKS_ENABLED", "true");
+  const account = { ...fixtureAccount, credential_ciphertext: encryptShippingToken(credential, fixtureAccount) };
+  const controller = new AbortController();
+  t.mock.method(globalThis, "fetch", async (_url, request) => {
+    controller.abort(new DOMException(credential, "TimeoutError"));
+    request.signal.throwIfAborted();
+  });
+  assert.deepEqual(await verifyShippingAccount(account, true, controller.signal), { status: "failed", error: "PROVIDER_TIMEOUT" });
+});
+
+test("checkAccount uses the authenticated actor and respects authoritative final dispositions", async () => {
+  const caller = "41000000-0000-4000-8000-000000000001";
+  const checkId = "44000000-0000-4000-8000-000000000001";
+  const revision = "45000000-0000-4000-8000-000000000001";
+  globalThis.shippingTestSession = {
+    auth: { getClaims: async () => ({ data: { claims: { sub: caller } } }) },
+    rpc: async (name) => ({ data: name === "is_platform_admin" }),
+  };
+  let disposition;
+  globalThis.shippingTestAdmin = () => ({
+    rpc: async (name, args) => {
+      if (name === "begin_shipping_account_check") {
+        assert.deepEqual(args, { target_id: id, actor: caller });
+        return { data: { state: "claimed", id: checkId, revision } };
+      }
+      assert.equal(name, "finish_shipping_account_check");
+      assert.deepEqual(args, { target_id: id, check_id: checkId, check_result: "failed", failure_code: "PROVIDER_UNAVAILABLE" });
+      return { data: disposition };
+    },
+    from: (table) => {
+      const filters = [];
+      const query = {
+        select: () => query,
+        eq: (key, value) => { filters.push([key, value]); return query; },
+        maybeSingle: async () => {
+          if (table === "shipping_provider_accounts") {
+            assert.deepEqual(filters, [["id", id], ["scope", "platform"], ["config_revision", revision]]);
+            return { data: null };
+          }
+          return { data: { catalog_enabled: true } };
+        },
+      };
+      return query;
+    },
+  });
+  const messages = {
+    superseded: /thay Ä‘á»•i/,
+    expired: /thá»i háº¡n/,
+    already_finished: /Ä‘Ã£ hoÃ n táº¥t/,
+    missing: /KhÃ´ng tÃ¬m tháº¥y/,
+    provider_disabled: /Ä‘ang táº¯t/,
+  };
+  for (const [value, message] of Object.entries(messages)) {
+    disposition = value;
+    const result = await actions.checkAccount({}, form({ id, actor: "spoofed", actor_id: "spoofed" }));
+    assert.equal(result.ok, false);
+    assert.match(result.message, message);
+  }
+});

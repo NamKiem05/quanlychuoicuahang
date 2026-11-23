@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requirePlatformAdminAccess } from "@/lib/platform-account";
 import NotificationForm from "./notification-form";
-import "@/app/platform-notifications.css";
+import "@/components/admin/platform-notifications.css";
 
 const categories: Record<string, string> = { general: "Thông báo chung", maintenance: "Bảo trì", feature: "Cập nhật tính năng", payment: "Thanh toán", expiry: "Hết hạn dịch vụ" };
 const dateFormat = new Intl.DateTimeFormat("vi-VN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });

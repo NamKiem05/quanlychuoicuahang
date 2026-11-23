@@ -4,9 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { requirePlatformAdminAccess } from "@/lib/platform-account";
 import { hasOrderWorkRemaining } from "@/lib/order-processing";
 import { isRefundableOrder } from "@/lib/order-refunds";
-import OrderPagination from "@/app/order-pagination";
-import OrderDetailsModal from "@/app/order-details-modal";
-import "@/app/order-list-status.css";
+import OrderPagination from "@/components/retail/order-pagination";
+import OrderDetailsModal from "@/components/retail/order-details-modal";
+import "@/components/retail/order-list-status.css";
 
 export const metadata: Metadata = { title: "Đơn hàng toàn nền tảng | Quản trị" };
 

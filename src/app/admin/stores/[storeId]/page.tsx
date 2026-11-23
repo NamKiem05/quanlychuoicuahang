@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePlatformAdminAccess } from "@/lib/platform-account";
 import { findMerchantPlan } from "@/lib/merchant-plans";
-import Toast from "@/app/toast";
+import Toast from "@/components/ui/toast";
 import { setStoreModule, resetStoreModule } from "../module-actions";
 import "./store-detail.css";
 

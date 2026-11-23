@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NovaCore – Đăng nhập & Đăng ký</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f3f5fb;--card:#ffffff;--text:#0d1330;--muted:#5d6687;--line:#dde2f0;--field:#f6f8fd;
+  --brand:#2563eb;--brand2:#0aa8c9;--danger:#d93a55;--ok:#12a36b;--ring:rgba(37,99,235,.28);
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#060a18;--card:#0d1226;--text:#eef1ff;--muted:#8d97bd;--line:#1e2645;--field:#0a0f20;
+  --brand:#3b82f6;--brand2:#2fd3f0;--danger:#ff6b86;--ok:#34d399;--ring:rgba(59,130,246,.38);}}
+:root[data-theme="dark"]{
+  --bg:#060a18;--card:#0d1226;--text:#eef1ff;--muted:#8d97bd;--line:#1e2645;--field:#0a0f20;
+  --brand:#3b82f6;--brand2:#2fd3f0;--danger:#ff6b86;--ok:#34d399;--ring:rgba(59,130,246,.38);}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;line-height:1.5}
+.shell{min-height:100vh;display:grid;grid-template-columns:1.05fr 1fr}
+/* brand panel */
+.hero{position:relative;overflow:hidden;background:#060a18;color:#eef1ff;padding:44px 52px;display:flex;flex-direction:column;justify-content:space-between;
+  background-image:linear-gradient(rgba(109,130,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(109,130,255,.07) 1px,transparent 1px);background-size:44px 44px}
+.hero::before{content:"";position:absolute;width:520px;height:520px;right:-160px;top:-120px;background:radial-gradient(circle,rgba(75,99,255,.45),transparent 65%);pointer-events:none}
+.hero::after{content:"";position:absolute;width:480px;height:480px;left:-180px;bottom:-200px;background:radial-gradient(circle,rgba(47,211,240,.28),transparent 65%);pointer-events:none}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px;letter-spacing:.2px;position:relative;z-index:1}
+.logo i{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#4b63ff,#2fd3f0);display:grid;place-items:center}
+.logo svg{width:18px;height:18px}
+.hero-body{position:relative;z-index:1}
+.hero h1{font-size:clamp(28px,3.2vw,42px);line-height:1.15;margin:0 0 14px;font-weight:700;letter-spacing:-.5px;max-width:460px}
+.hero p{color:#9aa5cf;margin:0;max-width:420px}
+.net{width:100%;max-width:470px;margin:30px 0 0;display:block}
+.net line{stroke:#6d82ff;stroke-opacity:.5;stroke-width:1.2;stroke-dasharray:5 6;animation:flow 2.4s linear infinite}
+.net .n{fill:#0d1226;stroke:#6d82ff;stroke-width:1.6}
+.net .core{fill:url(#g);stroke:none}
+.net .halo{fill:#4b63ff;opacity:.25;transform-origin:235px 120px;animation:pulse 2.8s ease-in-out infinite}
+.net text{fill:#9aa5cf;font-size:11px;font-family:inherit}
+@keyframes flow{to{stroke-dashoffset:-22}}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:.28}50%{transform:scale(1.5);opacity:.05}}
+.stats{display:flex;gap:28px;position:relative;z-index:1;color:#9aa5cf;font-size:13px}
+.stats b{display:block;color:#eef1ff;font-size:18px;font-weight:600}
+/* form panel */
+.panel{display:flex;align-items:center;justify-content:center;padding:32px 24px;position:relative}
+.theme{position:absolute;top:18px;right:18px;width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--muted);cursor:pointer;display:grid;place-items:center}
+.theme:hover{color:var(--text)}
+.card{width:100%;max-width:420px}
+.tabs{position:relative;display:grid;grid-template-columns:1fr 1fr;background:var(--field);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:28px}
+.tabs button{position:relative;z-index:1;background:none;border:0;padding:10px;font:inherit;font-weight:600;color:var(--muted);cursor:pointer;border-radius:9px}
+.tabs button[aria-selected="true"]{color:#fff}
+.pill{position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);border-radius:9px;background:linear-gradient(135deg,var(--brand),#1d4ed8);transition:transform .25s ease;box-shadow:0 6px 18px -6px var(--brand)}
+.tabs[data-tab="register"] .pill{transform:translateX(100%)}
+h2{margin:0 0 6px;font-size:24px;letter-spacing:-.3px}
+.sub{margin:0 0 22px;color:var(--muted)}
+form[hidden]{display:none}
+.field{margin-bottom:16px}
+label{display:block;font-size:13px;font-weight:500;margin-bottom:6px}
+.inp{position:relative}
+.inp svg.ic{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--muted);pointer-events:none}
+input[type=text],input[type=email],input[type=password]{width:100%;height:46px;padding:0 44px 0 42px;border-radius:11px;border:1px solid var(--line);background:var(--field);color:var(--text);font:inherit;outline:none;transition:border-color .15s,box-shadow .15s}
+input::placeholder{color:var(--muted);opacity:.7}
+input:focus{border-color:var(--brand);box-shadow:0 0 0 4px var(--ring)}
+.field.bad input{border-color:var(--danger)}
+.err{display:none;color:var(--danger);font-size:12.5px;margin-top:5px}
+.field.bad .err{display:block}
+.eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:34px;height:34px;border:0;background:none;color:var(--muted);cursor:pointer;border-radius:8px;display:grid;place-items:center}
+.eye:hover{color:var(--text)}
+.eye svg{width:18px;height:18px}
+.row{display:flex;justify-content:space-between;align-items:center;margin:2px 0 20px;font-size:13.5px}
+.chk{display:flex;gap:9px;align-items:center;color:var(--muted);cursor:pointer}
+.chk input{accent-color:var(--brand);width:16px;height:16px;margin:0}
+a{color:var(--brand);text-decoration:none;font-weight:500}
+a:hover{text-decoration:underline}
+.meter{display:flex;gap:4px;margin-top:8px}
+.meter span{flex:1;height:4px;border-radius:4px;background:var(--line);transition:background .2s}
+.meter-t{font-size:12px;color:var(--muted);margin-top:5px;min-height:18px}
+.btn{width:100%;height:48px;border:0;border-radius:11px;font:inherit;font-weight:600;font-size:15px;color:#fff;cursor:pointer;background:linear-gradient(135deg,var(--brand),#1d4ed8);box-shadow:0 10px 24px -10px var(--brand);transition:transform .1s,filter .15s;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn:hover{filter:brightness(1.08)}
+.btn:active{transform:translateY(1px)}
+.btn[disabled]{opacity:.75;cursor:progress}
+.spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:rot .7s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+.or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12.5px;margin:22px 0}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+.soc{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.soc button{height:44px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--text);font:inherit;font-weight:500;cursor:pointer;display:flex;gap:9px;align-items:center;justify-content:center}
+.soc button:hover{border-color:var(--brand)}
+.soc svg{width:18px;height:18px}
+.foot{text-align:center;color:var(--muted);font-size:13.5px;margin-top:22px}
+.foot button{background:none;border:0;font:inherit;font-weight:600;color:var(--brand);cursor:pointer;padding:0}
+button:focus-visible,a:focus-visible{outline:3px solid var(--ring);outline-offset:2px}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translate(-50%,30px);opacity:0;background:var(--card);color:var(--text);border:1px solid var(--line);border-left:4px solid var(--ok);padding:12px 18px;border-radius:12px;box-shadow:0 18px 40px -16px rgba(0,0,0,.5);transition:.3s;pointer-events:none;z-index:9;max-width:90vw}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr}
+  .hero{padding:26px 24px}
+  .hero-body p,.net,.stats{display:none}
+  .hero h1{font-size:22px;margin:18px 0 0}
+}
+@media (prefers-reduced-motion:reduce){.net line,.net .halo,.spin{animation:none}.pill,.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="hero">
+    <div class="logo"><i><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="M12 22V12M3 7l9 5 9-5"/></svg></i>NovaCore</div>
+    <div class="hero-body">
+      <h1>Hạ tầng đám mây cho những đội ngũ xây sản phẩm nhanh hơn.</h1>
+      <p>Triển khai, giám sát và mở rộng ứng dụng trên một nền tảng duy nhất, bảo mật theo chuẩn doanh nghiệp.</p>
+      <svg class="net" viewBox="0 0 470 240" role="img" aria-label="Sơ đồ mạng lưới kết nối các node">
+        <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4b63ff"/><stop offset="1" stop-color="#2fd3f0"/></linearGradient></defs>
+        <g><line x1="235" y1="120" x2="70" y2="50"/><line x1="235" y1="120" x2="110" y2="190"/><line x1="235" y1="120" x2="390" y2="45"/><line x1="235" y1="120" x2="400" y2="180"/><line x1="235" y1="120" x2="235" y2="25"/><line x1="70" y1="50" x2="110" y2="190"/><line x1="390" y1="45" x2="400" y2="180"/></g>
+        <circle class="halo" cx="235" cy="120" r="30"/>
+        <circle class="core" cx="235" cy="120" r="20"/>
+        <circle class="n" cx="70" cy="50" r="9"/><circle class="n" cx="110" cy="190" r="9"/><circle class="n" cx="390" cy="45" r="9"/><circle class="n" cx="400" cy="180" r="9"/><circle class="n" cx="235" cy="25" r="9"/>
+        <text x="46" y="78">hà nội</text><text x="84" y="216">singapore</text><text x="366" y="72">tokyo</text><text x="376" y="208">sydney</text><text x="250" y="22">frankfurt</text>
+      </svg>
+    </div>
+    <div class="stats"><div><b>99,99%</b>Uptime</div><div><b>32</b>Vùng dữ liệu</div><div><b>SOC 2</b>Đã chứng nhận</div></div>
+  </aside>
+
+  <main class="panel">
+    <button class="theme" id="theme" type="button" aria-label="Đổi giao diện sáng/tối">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+    <div class="card">
+      <div class="tabs" id="tabs" data-tab="login" role="tablist">
+        <span class="pill"></span>
+        <button type="button" role="tab" aria-selected="true" data-t="login">Đăng nhập</button>
+        <button type="button" role="tab" aria-selected="false" data-t="register">Đăng ký</button>
+      </div>
+
+      <form id="login" novalidate>
+        <h2>Chào mừng trở lại</h2>
+        <p class="sub">Đăng nhập để tiếp tục vào bảng điều khiển của bạn.</p>
+        <div class="field" data-f="email">
+          <label for="le">Email</label>
+          <div class="inp"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 8 8 6 8-6"/></svg>
+          <input id="le" type="email" placeholder="ten@congty.com" autocomplete="email"></div>
+          <div class="err">Nhập địa chỉ email hợp lệ.</div>
+        </div>
+        <div class="field" data-f="pw">
+          <label for="lp">Mật khẩu</label>
+          <div class="inp"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+          <input id="lp" type="password" placeholder="Nhập mật khẩu" autocomplete="current-password">
+          <button class="eye" type="button" aria-label="Hiện mật khẩu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+          <div class="err">Mật khẩu cần ít nhất 8 ký tự.</div>
+        </div>
+        <div class="row"><label class="chk" style="margin:0"><input type="checkbox"> Ghi nhớ tôi</label><a href="#quen-mat-khau">Quên mật khẩu?</a></div>
+        <button class="btn" type="submit">Đăng nhập</button>
+        <div class="or">hoặc tiếp tục với</div>
+        <div class="soc">
+          <button type="button"><svg viewBox="0 0 24 24"><path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.3-.2-1.9H12v3.7h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.300 3-7.300z"/><path fill="#34A853" d="M12 22c2.700 0 5-.9 6.600-2.400l-3.200-2.500c-.9.600-2 1-3.400 1-2.600 0-4.800-1.800-5.600-4.100H3.100v2.600A10 10 0 0 0 12 22z"/><path fill="#FBBC05" d="M6.400 14c-.2-.6-.3-1.300-.3-2s.1-1.400.3-2V7.400H3.100a10 10 0 0 0 0 9.200z"/><path fill="#EA4335" d="M12 5.900c1.500 0 2.800.5 3.800 1.500l2.800-2.800A10 10 0 0 0 3.100 7.400L6.400 10C7.200 7.700 9.400 5.900 12 5.900z"/></svg>Google</button>
+          <button type="button"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.200 19.500c.5.1.7-.2.7-.5v-1.800c-2.800.6-3.400-1.200-3.400-1.200-.5-1.200-1.100-1.500-1.100-1.500-.9-.6.1-.6.1-.6 1 .1 1.500 1 1.500 1 .9 1.500 2.400 1.100 3 .8.1-.7.4-1.100.6-1.300-2.200-.3-4.600-1.100-4.600-5 0-1.100.4-2 1-2.700-.1-.3-.4-1.300.1-2.700 0 0 .8-.3 2.700 1a9.400 9.400 0 0 1 5 0c1.900-1.300 2.700-1 2.700-1 .5 1.400.2 2.400.1 2.700.6.7 1 1.600 1 2.700 0 3.900-2.300 4.700-4.600 5 .4.300.7.900.7 1.800v2.700c0 .3.2.6.7.5A10 10 0 0 0 12 2z"/></svg>GitHub</button>
+        </div>
+        <div class="foot">Chưa có tài khoản? <button type="button" data-go="register">Tạo tài khoản</button></div>
+      </form>
+
+      <form id="register" novalidate hidden>
+        <h2>Tạo tài khoản mới</h2>
+        <p class="sub">Bắt đầu dùng thử miễn phí 14 ngày, không cần thẻ.</p>
+        <div class="field" data-f="name">
+          <label for="rn">Họ và tên</label>
+          <div class="inp"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          <input id="rn" type="text" placeholder="Nguyễn Văn An" autocomplete="name"></div>
+          <div class="err">Vui lòng nhập họ và tên.</div>
+        </div>
+        <div class="field" data-f="email">
+          <label for="re">Email</label>
+          <div class="inp"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 8 8 6 8-6"/></svg>
+          <input id="re" type="email" placeholder="ten@congty.com" autocomplete="email"></div>
+          <div class="err">Nhập địa chỉ email hợp lệ.</div>
+        </div>
+        <div class="field" data-f="pw">
+          <label for="rp">Mật khẩu</label>
+          <div class="inp"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+          <input id="rp" type="password" placeholder="Ít nhất 8 ký tự" autocomplete="new-password">
+          <button class="eye" type="button" aria-label="Hiện mật khẩu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+          <div class="meter" id="meter"><span></span><span></span><span></span><span></span></div>
+          <div class="meter-t" id="mt"></div>
+          <div class="err">Mật khẩu cần ít nhất 8 ký tự.</div>
+        </div>
+        <div class="field" data-f="pw2">
+          <label for="rc">Nhập lại mật khẩu</label>
+          <div class="inp"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3 4 6v6c0 5 3.500 8 8 9 4.500-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/></svg>
+          <input id="rc" type="password" placeholder="Nhập lại mật khẩu" autocomplete="new-password"></div>
+          <div class="err">Mật khẩu nhập lại chưa khớp.</div>
+        </div>
+        <div class="field" data-f="tos" style="margin-bottom:20px">
+          <label class="chk" style="margin:0"><input id="rt" type="checkbox"> <span>Tôi đồng ý với <a href="#dieu-khoan">Điều khoản</a> và <a href="#bao-mat">Chính sách bảo mật</a></span></label>
+          <div class="err">Bạn cần đồng ý điều khoản để tiếp tục.</div>
+        </div>
+        <button class="btn" type="submit">Tạo tài khoản</button>
+        <div class="foot">Đã có tài khoản? <button type="button" data-go="login">Đăng nhập</button></div>
+      </form>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function(){
+  var $=function(s,r){return (r||document).querySelector(s)},$$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+  var tabs=$('#tabs'),forms={login:$('#login'),register:$('#register')};
+  function go(t){
+    tabs.dataset.tab=t;
+    $$('button[role=tab]',tabs).forEach(function(b){b.setAttribute('aria-selected',b.dataset.t===t)});
+    forms.login.hidden=t!=='login';forms.register.hidden=t!=='register';
+    try{history.replaceState(null,'','#'+t)}catch(e){}
+  }
+  $$('button[role=tab]',tabs).forEach(function(b){b.onclick=function(){go(b.dataset.t)}});
+  $$('[data-go]').forEach(function(b){b.onclick=function(){go(b.dataset.go)}});
+  if(location.hash==='#register')go('register');
+
+  $$('.eye').forEach(function(b){b.onclick=function(){
+    var i=b.parentNode.querySelector('input'),show=i.type==='password';
+    i.type=show?'text':'password';b.setAttribute('aria-label',show?'Ẩn mật khẩu':'Hiện mật khẩu');
+  }});
+
+  var toast=$('#toast'),tt;
+  function say(m){toast.textContent=m;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show')},3200)}
+  function bad(f,on){f.classList.toggle('bad',on);return !on}
+  var mail=/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+  function strength(v){
+    var s=0;if(v.length>=8)s++;if(/[A-Z]/.test(v)&&/[a-z]/.test(v))s++;if(/\d/.test(v))s++;if(/[^A-Za-z0-9]/.test(v)&&v.length>=8)s++;
+    return s;
+  }
+  var cols=['#d93a55','#e8912d','#d4b31f','#12a36b'],names=['Rất yếu','Yếu','Khá','Mạnh'];
+  $('#rp').addEventListener('input',function(){
+    var v=this.value,s=v?Math.max(1,strength(v)):0;
+    $$('#meter span').forEach(function(x,i){x.style.background=i<s?cols[s-1]:''});
+    $('#mt').textContent=s?'Độ mạnh: '+names[s-1]:'';
+  });
+
+  function submit(form,msg){
+    var btn=$('.btn',form),old=btn.textContent;
+    btn.disabled=true;btn.innerHTML='<span class="spin"></span>Đang xử lý';
+    setTimeout(function(){btn.disabled=false;btn.textContent=old;say(msg);form.reset();$('#meter').querySelectorAll('span').forEach(function(x){x.style.background=''});$('#mt').textContent=''},1200);
+  }
+
+  forms.login.addEventListener('submit',function(e){
+    e.preventDefault();var f=forms.login,ok=true;
+    ok=bad($('[data-f=email]',f),!mail.test($('#le').value.trim()))&&ok;
+    ok=bad($('[data-f=pw]',f),$('#lp').value.length<8)&&ok;
+    if(ok)submit(f,'Đăng nhập thành công (bản demo, chưa kết nối máy chủ).');
+  });
+  forms.register.addEventListener('submit',function(e){
+    e.preventDefault();var f=forms.register,ok=true;
+    ok=bad($('[data-f=name]',f),!$('#rn').value.trim())&&ok;
+    ok=bad($('[data-f=email]',f),!mail.test($('#re').value.trim()))&&ok;
+    ok=bad($('[data-f=pw]',f),$('#rp').value.length<8)&&ok;
+    ok=bad($('[data-f=pw2]',f),$('#rc').value!==$('#rp').value||!$('#rc').value)&&ok;
+    ok=bad($('[data-f=tos]',f),!$('#rt').checked)&&ok;
+    if(ok)submit(f,'Tạo tài khoản thành công (bản demo, chưa kết nối máy chủ).');
+  });
+  $$('input').forEach(function(i){i.addEventListener('input',function(){var f=i.closest('.field');if(f)f.classList.remove('bad')})});
+
+  var root=document.documentElement;
+  $('#theme').onclick=function(){
+    var dark=root.dataset.theme?root.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme=dark?'light':'dark';
+  };
+})();
+</script>
+</body>
+</html>

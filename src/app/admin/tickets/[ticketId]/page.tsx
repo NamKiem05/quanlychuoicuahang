@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSupportTicketAccess } from "@/lib/platform-account";
-import { TicketDetail } from "@/app/support-tickets/shared";
+import { TicketDetail } from "@/app/(merchant)/support-tickets/shared";
 export default async function AdminTicket({ params, searchParams }: { params: Promise<{ ticketId: string }>; searchParams: Promise<{ message?: string }> }) {
   const [{ ticketId }, query, supabase] = await Promise.all([params, searchParams, createClient()]);
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ticketId)) notFound();

@@ -51,19 +51,27 @@ export function decryptGhnToken(value:string,storeId:string):string {
   return Buffer.concat([decipher.update(Buffer.from(data,"base64")),decipher.final()]).toString("utf8");
 }
 type GhnShop = { _id:number; name:string; status:number };
-export async function verifyGhnShop(token:string, shopId:number):Promise<{ name:string }> {
+export async function verifyGhnShop(token:string, shopId:number, deadline?: AbortSignal):Promise<{ name:string }> {
+  function requestSignal() {
+    const timeout = AbortSignal.timeout(10000);
+    return deadline ? AbortSignal.any([deadline, timeout]) : timeout;
+  }
+  function requestFailure(error: unknown) {
+    return new Error(deadline && error instanceof Error && error.name === "TimeoutError"
+      ? "GHN_TIMEOUT" : "GHN_NETWORK_FAILED");
+  }
   let offset=0;
   for(let page=0;page<10;page++) {
     const url=new URL("https://dev-online-gateway.ghn.vn/shiip/public-api/v2/shop/all");
     url.searchParams.set("offset",String(offset)); url.searchParams.set("limit","100");
     let response:Response;
-    try { response=await fetch(url,{headers:{Token:token},cache:"no-store",signal:AbortSignal.timeout(10000),redirect:"error"}); }
-    catch { throw new Error("GHN_NETWORK_FAILED"); }
+    try { response=await fetch(url,{headers:{Token:token},cache:"no-store",signal:requestSignal(),redirect:"error"}); }
+    catch (error) { throw requestFailure(error); }
     if(response.status === 401 || response.status === 403) {
       // Distinguish an invalid token from a token that cannot access the shop API.
       let tokenCheck:Response;
-      try { tokenCheck=await fetch("https://dev-online-gateway.ghn.vn/shiip/public-api/master-data/province",{headers:{Token:token,ShopId:String(shopId)},cache:"no-store",signal:AbortSignal.timeout(10000),redirect:"error"}); }
-      catch { throw new Error("GHN_NETWORK_FAILED"); }
+      try { tokenCheck=await fetch("https://dev-online-gateway.ghn.vn/shiip/public-api/master-data/province",{headers:{Token:token,ShopId:String(shopId)},cache:"no-store",signal:requestSignal(),redirect:"error"}); }
+      catch (error) { throw requestFailure(error); }
       if (tokenCheck.ok) {
         const result:unknown=await tokenCheck.json().catch(()=>null);
         if(result && typeof result === "object" && "code" in result && result.code === 200) throw new Error("GHN_SHOP_ACCESS_DENIED");

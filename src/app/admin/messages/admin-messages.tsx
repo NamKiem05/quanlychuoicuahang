@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import { createClient } from "@/lib/supabase/client";
 import { useAdminChatNotifications } from "../admin-chat-notifications";
 import Link from "next/link";
-import { ChatAttachment, ChatFileUpload } from "@/app/chat/chat-attachment";
+import { ChatAttachment, ChatFileUpload } from "@/components/chat/chat-attachment";
 
 type ChatStore = { id: string; name: string; slug: string };
 type ChatMessage = {

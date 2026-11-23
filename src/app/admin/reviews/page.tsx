@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { requirePlatformAdminAccess } from "@/lib/platform-account";
 import { updateAdminReviewStatus } from "../actions";
-import Toast from "@/app/toast";
+import Toast from "@/components/ui/toast";
 import { toastVariantForMessage } from "@/lib/toast";
 
 export const metadata: Metadata = { title: "Quản lý đánh giá | Quản trị" };

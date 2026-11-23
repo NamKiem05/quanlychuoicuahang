@@ -3,7 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requirePlatformAdminAccess } from "@/lib/platform-account";
 import StoreActions from "./store-actions";
-import Toast from "@/app/toast";
+import Toast from "@/components/ui/toast";
 import { toastVariantForMessage } from "@/lib/toast";
 import "./store-stats.css";
 

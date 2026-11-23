@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import OverviewRevenue, { type RevenueSearchParams } from "@/app/overview-revenue";
+import OverviewRevenue, { type RevenueSearchParams } from "@/components/dashboard/overview-revenue";
 import { createClient } from "@/lib/supabase/server";
 import OrdersToWatch from "./orders-to-watch";
 import "./overview-metrics.css";

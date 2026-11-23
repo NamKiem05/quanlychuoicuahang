@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireSupportTicketAccess } from "@/lib/platform-account";
-import { TicketList } from "@/app/support-tickets/shared";
+import { TicketList } from "@/app/(merchant)/support-tickets/shared";
 export default async function AdminTickets({ searchParams }: { searchParams: Promise<{ message?: string; page?: string }> }) {
   const [supabase, query] = await Promise.all([createClient(), searchParams]);
   await requireSupportTicketAccess(supabase);

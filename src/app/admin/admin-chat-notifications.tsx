@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
-import styles from "@/app/chat/chat-notifications.module.css";
+import styles from "@/components/chat/chat-notifications.module.css";
 
 type ChatStore = { id: string; name: string };
 type ChatMessage = {

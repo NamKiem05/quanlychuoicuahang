@@ -5,9 +5,9 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import AdminNavigation from "./admin-navigation";
-import LoadingScreen from "@/app/loading-screen";
+import LoadingScreen from "@/components/ui/loading-screen";
 import AdminChatNotificationsProvider from "./admin-chat-notifications";
-import { signOut } from "@/app/dashboard/actions";
+import { signOut } from "@/app/(merchant)/dashboard/actions";
 import "./admin-navigation.css";
 import { defaultPlatformSettings, getPlatformSettings } from "@/lib/platform-settings";
 

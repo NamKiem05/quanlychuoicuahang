@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import Link from "next/link";
 import type { AuthUser } from "@supabase/supabase-js";
-import Toast from "@/app/toast";
+import Toast from "@/components/ui/toast";
 import { toastVariantForMessage } from "@/lib/toast";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";

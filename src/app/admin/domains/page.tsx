@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requirePlatformAdminAccess } from "@/lib/platform-account";
-import Toast from "@/app/toast";
+import Toast from "@/components/ui/toast";
 import { toastVariantForMessage } from "@/lib/toast";
 import RemoveAdminDomainForm from "./remove-domain-form";
 import DomainCheck from "./domain-check";

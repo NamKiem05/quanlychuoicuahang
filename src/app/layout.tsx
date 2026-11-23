@@ -4,7 +4,7 @@ import { cacheLife } from "next/cache";
 import { createClient } from "@supabase/supabase-js";
 import { defaultPlatformSettings } from "@/lib/platform-settings";
 import "./globals.css";
-import LoadingScreen from "./loading-screen";
+import LoadingScreen from "../components/ui/loading-screen";
 
 async function platformMetadata(): Promise<Metadata> {
   "use cache";

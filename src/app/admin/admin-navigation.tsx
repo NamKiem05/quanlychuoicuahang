@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import SidebarIcon from "@/app/sidebar-icon";
+import SidebarIcon from "@/components/ui/sidebar-icon";
 import { usePathname } from "next/navigation";
 import { useState, type CSSProperties } from "react";
 import { useAdminChatNotifications } from "./admin-chat-notifications";
-import styles from "@/app/chat/chat-notifications.module.css";
+import styles from "@/components/chat/chat-notifications.module.css";
 
 type MenuItem = { label: string; icon: Parameters<typeof SidebarIcon>[0]["name"]; href?: string; children?: { label: string; href?: string }[] };
 const groups: { label: string; items: MenuItem[] }[] = [
@@ -19,6 +19,10 @@ const groups: { label: string; items: MenuItem[] }[] = [
     { href: "/admin/plan-payments", label: "Thanh toán & giao dịch", icon: "payment" },
     { href: "/admin/invoices", label: "Hóa đơn", icon: "orders" },
     { href: "/admin/orders", label: "Đơn hàng", icon: "orders" },
+    { label: "Quản lý vận chuyển", icon: "orders", children: [
+      { href: "/admin/shipping/providers", label: "Nhà cung cấp" },
+      { href: "/admin/shipping/accounts", label: "Tài khoản vận chuyển" },
+    ] },
   ] },
   { label: "Quản lý nền tảng", items: [
     { href: "/admin/domains", label: "Tên miền & Website", icon: "domains" },

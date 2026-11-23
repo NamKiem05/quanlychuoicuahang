@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { findMerchantPlan, formatPlanAmount } from "@/lib/merchant-plans";
-import SidebarIcon from "@/app/sidebar-icon";
+import SidebarIcon from "@/components/ui/sidebar-icon";
 import "./plan-payments.css";
 
 export const metadata = { title: "Thanh toán gói | Quản trị" };
