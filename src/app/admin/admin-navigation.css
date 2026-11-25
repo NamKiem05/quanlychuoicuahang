@@ -35,3 +35,5 @@
   .admin-platform-shell .sidebar-mobile-settings-menu a.admin-sidebar-submenu-link.active { background: #e8f0ff; color: #175fce; }
   .admin-platform-shell .sidebar-mobile-settings-menu .admin-sidebar-submenu-link.is-unavailable { color: #8b99aa; }
 }
+.admin-theme-sublink { display:flex; align-items:center; gap:7px; }
+.admin-theme-sublink svg { width:14px; height:14px; flex:none; }

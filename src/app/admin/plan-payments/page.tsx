@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { requirePlatformAdminAccess } from "@/lib/platform-account";
 import { findMerchantPlan, formatPlanAmount } from "@/lib/merchant-plans";
 import SidebarIcon from "@/components/ui/sidebar-icon";
 import "./plan-payments.css";
@@ -19,8 +19,7 @@ function formatDate(value: string | null) {
 
 export default async function AdminPlanPayments({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; page?: string }> }) {
   const [supabase, query] = await Promise.all([createClient(), searchParams]);
-  const { data: isAdmin } = await supabase.rpc("is_platform_admin");
-  if (isAdmin !== true) redirect("/admin");
+  await requirePlatformAdminAccess(supabase);
 
   const search = typeof query.q === "string" ? query.q.trim().replace(/[^a-z0-9-]/gi, "").slice(0, 120) : "";
   const status = typeof query.status === "string" && Object.hasOwn(statuses, query.status) ? query.status : "";
@@ -35,7 +34,8 @@ export default async function AdminPlanPayments({ searchParams }: { searchParams
   }
 
   const upgradeFields = `${fields}, upgrade_amount_vnd, upgrade_expires_at`;
-  const extended = await loadPayments(`${upgradeFields}, received_amount_vnd`);
+  const bankFields = await loadPayments(`${upgradeFields}, received_amount_vnd, bank_reference`);
+  const extended = bankFields.error?.code === "42703" ? await loadPayments(`${upgradeFields}, received_amount_vnd`) : bankFields;
   const withUpgrades = extended.error?.code === "42703" ? await loadPayments(upgradeFields) : extended;
   const result = withUpgrades.error?.code === "42703" ? await loadPayments(fields) : withUpgrades;
   type Payment = {
@@ -44,6 +44,7 @@ export default async function AdminPlanPayments({ searchParams }: { searchParams
     sepay_transaction_id: string | null; valid_until: string | null;
     upgrade_amount_vnd?: number | null; upgrade_expires_at?: string | null;
     received_amount_vnd?: number | null;
+    bank_reference?: string | null;
   };
   const rows = (result.data ?? []) as unknown as Payment[];
   const owners = [...new Set(rows.map((row) => row.user_id))];
@@ -98,7 +99,7 @@ export default async function AdminPlanPayments({ searchParams }: { searchParams
                       <th scope="row" className="plan-payments-owner">{names.get(row.user_id) || <code>{row.user_id}</code>}</th>
                       <td><strong>{findMerchantPlan(row.plan)?.name ?? row.plan}</strong>{row.upgrade_amount_vnd != null && <small>Nâng cấp</small>}</td>
                       <td className="plan-payments-amount">{formatPlanAmount(row.received_amount_vnd ?? expected)}{row.received_amount_vnd != null && row.received_amount_vnd !== expected && <small>Yêu cầu {formatPlanAmount(expected)}</small>}</td>
-                      <td><code className="plan-payments-code">{row.transfer_code}</code>{row.sepay_transaction_id && <small>SePay {row.sepay_transaction_id}</small>}{["pending", "approved"].includes(row.status) && !late && <small><Link href={`/admin/invoices/new?payment=${row.id}`}>Tạo chứng từ →</Link></small>}</td>
+                      <td><code className="plan-payments-code">{row.transfer_code}</code>{row.sepay_transaction_id && <small>SePay {row.sepay_transaction_id}</small>}{row.bank_reference && <small>Đối soát ngân hàng · {row.bank_reference}</small>}{["pending", "approved"].includes(row.status) && !late && <small><Link href={`/admin/invoices/new?payment=${row.id}`}>Tạo chứng từ →</Link></small>}</td>
                       <td><span className="plan-payments-status" data-status={late ? "late" : row.status}>{late ? "Cần đối soát" : statuses[row.status]}</span>{late && <small>Nhận tiền sau hạn</small>}{row.status === "needs_review" && <small>Nhận tiền sau khi hủy mã</small>}</td>
                       <td>{formatDate(row.paid_at)}</td>
                       <td>{formatDate(row.valid_until ?? row.upgrade_expires_at ?? null)}</td>

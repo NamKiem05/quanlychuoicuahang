@@ -7,6 +7,7 @@ import { checkAccount, saveAccount, toggleAccount } from "../actions";
 import { ShippingDialog, ShippingForm } from "../forms";
 import { accountMetadata, checkErrors, connectionLabels, environments, shippingReadError, type Account } from "../model";
 import { pageSize, Pagination, readPage, type ShippingQuery } from "../pagination";
+import { ShippingHeading, ShippingStatus } from "../presentation";
 
 const path = "/admin/shipping/accounts";
 export const instant = false;
@@ -27,6 +28,14 @@ type CheckRow = {
   result: keyof typeof connectionLabels;
   error_code: string | null;
 };
+
+const connectionTones = {
+  not_configured: "neutral",
+  verified: "positive",
+  failed: "negative",
+  running: "pending",
+  superseded: "neutral",
+} as const;
 
 function AccountForm({ providers, account }: { providers: ProviderOption[]; account?: Account }) {
   return <ShippingForm action={saveAccount} label="Lưu tài khoản"
@@ -70,6 +79,7 @@ async function LegacyAccounts({ page }: { page: number }) {
     return <p className="admin-error" role="alert">Chưa tải được danh sách kết nối GHN hiện tại.</p>;
   }
   return <section className="admin-store-list">
+    <div className="shipping-list-heading"><h2>Kết nối GHN của cửa hàng</h2><span>{result.count ?? 0} kết nối</span></div>
     <div className="admin-table-scroll">
       <table className="admin-data-table">
         <thead><tr><th>Tài khoản</th><th>Cửa hàng</th><th>Nhà cung cấp</th><th>Shop ID</th><th>Môi trường</th><th>Trạng thái</th><th>Kiểm tra gần nhất</th></tr></thead>
@@ -78,7 +88,7 @@ async function LegacyAccounts({ page }: { page: number }) {
           {result.data.map((item) => <tr key={item.store_id}>
             <td>{item.shop_name}</td><td>{storeName(item.stores) ?? item.store_id}</td>
             <td>GHN</td><td>{item.shop_id}</td><td>{environments.sandbox}</td>
-            <td>Đã kết nối</td><td>{formatDate(item.checked_at)}</td>
+            <td><ShippingStatus tone="positive">Đã kết nối</ShippingStatus></td><td>{formatDate(item.checked_at)}</td>
           </tr>)}
         </tbody>
       </table>
@@ -97,7 +107,7 @@ async function History({ id, page }: { id: string; page: number }) {
   const rows: CheckRow[] = data ?? [];
 
   return <section className="admin-store-list" aria-labelledby="shipping-history">
-    <header className="admin-list-heading"><h2 id="shipping-history">Lịch sử kiểm tra kết nối</h2><Link href={path}>Đóng lịch sử</Link></header>
+    <header className="shipping-list-heading"><h2 id="shipping-history">Lịch sử kiểm tra kết nối</h2><Link href={path}>Quay lại tài khoản</Link></header>
     {error ? <p className="admin-error" role="alert">Chưa tải được lịch sử kiểm tra.</p> : <>
       <div className="admin-table-scroll">
         <table className="admin-data-table">
@@ -106,7 +116,7 @@ async function History({ id, page }: { id: string; page: number }) {
             {rows.length === 0 && <tr><td colSpan={4}>Chưa có lượt kiểm tra trên trang này.</td></tr>}
             {rows.map((row) => <tr key={row.id}>
               <td>{formatDate(row.started_at)}</td><td>{formatDate(row.finished_at)}</td>
-              <td>{connectionLabels[row.result]}</td><td>{row.error_code ? checkErrors[row.error_code] : "—"}</td>
+              <td><ShippingStatus tone={connectionTones[row.result]}>{connectionLabels[row.result]}</ShippingStatus></td><td>{row.error_code ? checkErrors[row.error_code] : "—"}</td>
             </tr>)}
           </tbody>
         </table>
@@ -140,22 +150,22 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
   const accountError = accounts?.error && shippingReadError(accounts.error.code, "Chưa tải được danh sách tài khoản.");
 
   return <main className="admin-content">
-    <header className="shipping-admin-heading">
-      <div><h1 className="admin-page-title">Tài khoản vận chuyển</h1>
-        <p className="dashboard-intro">Quản lý tài khoản GrowDesk và xem kết nối của cửa hàng.</p></div>
+    <ShippingHeading section="accounts" title="Tài khoản vận chuyển"
+      description="Quản lý tài khoản GrowDesk và xem kết nối của cửa hàng.">
       {scope === "platform" && !history && !providerError && !accountError && <ShippingDialog label="Thêm tài khoản GrowDesk" title="Thêm tài khoản GrowDesk">
         <AccountForm providers={providerList} />
       </ShippingDialog>}
-    </header>
-    <nav className="shipping-admin-actions" aria-label="Phạm vi tài khoản">
-      <Link className="secondary-submit" href={path} aria-current={scope === "platform" ? "page" : undefined}>GrowDesk</Link>
-      <Link className="secondary-submit" href={`${path}?scope=shop`} aria-current={scope === "shop" ? "page" : undefined}>Cửa hàng</Link>
-      <Link className="secondary-submit" href={`${path}?scope=legacy`} aria-current={scope === "legacy" ? "page" : undefined}>GHN hiện tại</Link>
+    </ShippingHeading>
+    <nav className="shipping-scope-nav" aria-label="Phạm vi tài khoản">
+      <Link href={path} aria-current={!history && scope === "platform" ? "page" : undefined}>GrowDesk</Link>
+      <Link href={`${path}?scope=shop`} aria-current={!history && scope === "shop" ? "page" : undefined}>Cửa hàng</Link>
+      <Link href={`${path}?scope=legacy`} aria-current={!history && scope === "legacy" ? "page" : undefined}>GHN hiện tại</Link>
     </nav>
     {providerError && <p className="admin-error" role="alert">{providerError}</p>}
     {history ? <History id={history} page={page} /> : scope === "legacy" ? <LegacyAccounts page={page} />
       : accountError ? (accountError !== providerError && <p className="admin-error" role="alert">{accountError}</p>)
       : <section className="admin-store-list">
+        <div className="shipping-list-heading"><h2>{scope === "platform" ? "Tài khoản GrowDesk" : "Tài khoản cửa hàng"}</h2><span>{accounts?.count ?? 0} tài khoản</span></div>
         <div className="admin-table-scroll">
           <table className="admin-data-table">
             <thead><tr><th>Tài khoản</th><th>Nhà cung cấp</th><th>Shop ID</th><th>Môi trường</th><th>Trạng thái</th><th>Ngày tạo</th><th>Kiểm tra gần nhất</th>{scope === "platform" && <th>Thao tác</th>}</tr></thead>
@@ -169,7 +179,10 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                   <td><b>{account.name}</b>{account.store_id && <div>{account.stores?.name ?? account.store_id}</div>}</td>
                   <td>{provider?.name ?? account.provider_code}</td><td>{account.external_shop_id}</td>
                   <td>{environments[account.environment]}</td>
-                  <td>{connectionLabels[account.connection_status]} · {account.enabled ? "Đã bật" : "Đã tắt"}</td>
+                  <td><div className="shipping-account-status">
+                    <ShippingStatus tone={connectionTones[account.connection_status]}>{connectionLabels[account.connection_status]}</ShippingStatus>
+                    <small>{account.enabled ? "Đã bật" : "Đã tắt"}</small>
+                  </div></td>
                   <td>{formatDate(account.created_at)}</td><td>{formatDate(account.last_checked_at)}</td>
                   {scope === "platform" && <td><div className="shipping-admin-actions">
                     <ShippingDialog label="Chỉnh sửa" title={`Chỉnh sửa ${account.name}`}>
@@ -181,7 +194,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                       <input type="hidden" name="id" value={account.id} />
                       <input type="hidden" name="enabled" value={String(!account.enabled)} />
                     </ShippingForm>}
-                    <Link href={`${path}?history=${account.id}`}>Lịch sử</Link>
+                    <Link className="shipping-history-link" href={`${path}?history=${account.id}`}>Lịch sử</Link>
                   </div></td>}
                 </tr>;
               })}

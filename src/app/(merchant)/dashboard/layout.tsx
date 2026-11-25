@@ -1,3 +1,4 @@
+import SessionTimeout from "@/components/ui/session-timeout";
 import { Suspense, type ReactNode } from "react";
 import LoadingScreen from "@/components/ui/loading-screen";
 import { defaultPlatformSettings, getPlatformSettings } from "@/lib/platform-settings";
@@ -43,7 +44,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
             <DashboardAccountMenu storeName={store?.name ?? null} email={email} role={membership?.role ?? null} />
           </div>
         </header>
-        <div className="admin-page-content"><Suspense fallback={<LoadingScreen contained />}>{children}</Suspense></div>
+        <div className="admin-page-content"><SessionTimeout /><Suspense fallback={<LoadingScreen contained />}>{children}</Suspense></div>
       </div>
       {store && <StoreAdminChat mode="merchant" theme="admin" storeId={store.id} storeName={store.name} />}
     </div>

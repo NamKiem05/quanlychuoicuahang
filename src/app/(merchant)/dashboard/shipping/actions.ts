@@ -8,6 +8,40 @@ import { readDimensions } from "@/lib/shipping/packaging";
 
 type Result = { ok:boolean; message:string };
 
+export async function saveShippingAccountSelection(_previous: Result, form: FormData): Promise<Result> {
+  const { store, membership, userId } = await getMerchantContext();
+  if (!store || membership?.role !== "owner") return { ok: false, message: "Chỉ chủ cửa hàng được chọn tài khoản vận chuyển." };
+  requireExpectedStore(form, store.id);
+
+  const version = form.get("version_id");
+  const revision = form.get("revision");
+  const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
+  if (typeof version !== "string" || !uuid.test(version) || typeof revision !== "string" || (revision && !uuid.test(revision))) {
+    return { ok: false, message: "Lựa chọn tài khoản không hợp lệ." };
+  }
+
+  try {
+    const { data, error } = await createAdminClient().rpc("select_store_shipping_account", {
+      target_store: store.id,
+      actor: userId,
+      target_version: version,
+      expected_revision: revision || null,
+    });
+    if (!error) {
+      revalidatePath("/dashboard/shipping");
+      switch (data) {
+        case "saved": return { ok: true, message: "Đã lưu lựa chọn tài khoản vận chuyển." };
+        case "conflict": return { ok: false, message: "Cấu hình vừa thay đổi. Hãy xem lại tài khoản đang chọn." };
+        case "unavailable": return { ok: false, message: "Tài khoản không còn khả dụng cho cửa hàng này." };
+        case "forbidden": return { ok: false, message: "Bạn không có quyền thay đổi cấu hình của cửa hàng này." };
+      }
+    }
+  } catch {
+    // Return a user-facing error without exposing server or database details.
+  }
+  return { ok: false, message: "Chưa lưu được lựa chọn tài khoản vận chuyển." };
+}
+
 export async function saveGhnPackaging(_previous: Result, form: FormData): Promise<Result> {
   const store = await authorized(form);
   if (!store) return { ok: false, message: "Chỉ chủ cửa hàng được cấu hình đóng gói." };

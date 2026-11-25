@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -14,6 +14,7 @@ import RetailCart from "@/components/retail/retail-cart";
 import CheckoutAddressFields, { type CheckoutAddress } from "@/components/retail/checkout-address-fields";
 import RetailCheckout from "@/components/retail/retail-checkout";
 import type { RetailVariant } from "@/components/storefront/retail-variant-picker";
+import type { ThemeManifest } from "@/lib/theme-studio";
 import { getOrderHoursStatus, type OrderHours } from "@/lib/store-order-hours";
 import "./storefront-closed-notice.css";
 import "./storefront-styles.css";
@@ -77,6 +78,7 @@ export type StorefrontData = {
     storefront_layout: StorefrontLayoutPreset;
     storefront_section_order: StorefrontSection[];
     storefront_hidden_sections: StorefrontSection[];
+    managedTheme?: Pick<ThemeManifest, "headline" | "density" | "settings">;
     accepts_orders: boolean;
     orderHours: OrderHours | null;
     delivery_enabled: boolean;
@@ -94,6 +96,8 @@ export type StorefrontData = {
   products: StorefrontProduct[];
   reviews: StorefrontReview[];
   initialTimestamp: number;
+  themeSections?: ReactNode;
+  themeEntry?: { category?: string; search?: string; productId?: string; cart?: boolean; fullMenu?: boolean };
 };
 
 const formatPrice = (price: number) => `${price.toLocaleString("vi-VN")}₫`;
@@ -140,7 +144,7 @@ function StoreClosedNotice({ paused, nextOpening, onDismiss }: {
   );
 }
 
-export default function StorefrontClient({ store, categories, products, reviews, initialTimestamp, merchandiseMode = "general" }: StorefrontData) {
+export default function StorefrontClient({ store, categories, products, reviews, initialTimestamp, merchandiseMode = "general", themeSections, themeEntry }: StorefrontData) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const [timestamp, setTimestamp] = useState(initialTimestamp);
@@ -157,18 +161,18 @@ export default function StorefrontClient({ store, categories, products, reviews,
   const closedOnEntry = !store.accepts_orders || !getOrderHoursStatus(store.orderHours, initialTimestamp).open;
   const contentOrder = (section: StorefrontSection) => 2 + store.storefront_section_order.indexOf(section);
   const isSectionVisible = (section: StorefrontSection) => !store.storefront_hidden_sections.includes(section);
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [showFullMenu, setShowFullMenu] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string | null>(themeEntry?.category ?? null);
+  const [search, setSearch] = useState(themeEntry?.search ?? "");
+  const [showFullMenu, setShowFullMenu] = useState(themeEntry?.fullMenu ?? false);
   const [showAllReviews, setShowAllReviews] = useState(false);
   const menuHeadingRef = useRef<HTMLHeadingElement>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [retailCartView, setRetailCartView] = useState(false);
+  const [retailCartView, setRetailCartView] = useState(themeEntry?.cart ?? false);
   const [retailCheckoutView, setRetailCheckoutView] = useState(false);
   const [retailCheckoutError, setRetailCheckoutError] = useState("");
   const retailCheckoutPending = useRef(false);
   useEffect(() => {
-    if (merchandiseMode !== "retail") return;
+    if (merchandiseMode !== "retail" && !themeSections) return;
     const params = new URLSearchParams(window.location.search);
     const checkout = params.get("checkout") === "1";
     const viewCart = params.get("cart") === "1";
@@ -183,7 +187,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
         localStorage.removeItem(key);
         sessionStorage.removeItem(`growdesk-cart:${store.id}`);
       }
-      if (checkout || viewCart) setRetailCartView(true);
+      if (merchandiseMode === "retail" && (checkout || viewCart)) setRetailCartView(true);
       if (params.get("search")) { setSearch(params.get("search") || ""); setShowFullMenu(true); }
       const url = new URL(window.location.href);
       url.searchParams.delete("checkout");
@@ -191,8 +195,8 @@ export default function StorefrontClient({ store, categories, products, reviews,
       window.history.replaceState(window.history.state, "", url);
     } catch { /* A disabled or unavailable localStorage leaves the cart empty. */ } });
     return () => window.cancelAnimationFrame(frame);
-  }, [merchandiseMode, store.id]);
-  const [activePanel, setActivePanel] = useState<ActivePanel>(null);
+  }, [merchandiseMode, store.id, themeSections]);
+  const [activePanel, setActivePanel] = useState<ActivePanel>(merchandiseMode === "retail" ? null : themeEntry?.cart ? "cart" : themeEntry?.productId ? "customize" : null);
   const [orderCode, setOrderCode] = useState("");
   const [orderEmail, setOrderEmail] = useState("");
   const [orderPhone, setOrderPhone] = useState("");
@@ -248,7 +252,7 @@ export default function StorefrontClient({ store, categories, products, reviews,
   const [orderError, setOrderError] = useState("");
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [addedProduct, setAddedProduct] = useState<string | null>(null);
-  const [customizingProductId, setCustomizingProductId] = useState<string | null>(null);
+  const [customizingProductId, setCustomizingProductId] = useState<string | null>(themeEntry?.productId ?? null);
   const [customizingQuantity, setCustomizingQuantity] = useState(1);
   const [optionSelections, setOptionSelections] = useState<Record<string, string[]>>({});
   const [optionError, setOptionError] = useState("");
@@ -790,12 +794,25 @@ export default function StorefrontClient({ store, categories, products, reviews,
 
   const covers = getStoreBannerUrls(store.banner_urls, store.banner_url);
   const isRetail = merchandiseMode === "retail";
+  const settings = store.managedTheme?.settings;
+  const themeColumns = settings ? {
+    "--store-theme-cols-desktop": settings.columns[0],
+    "--store-theme-cols-tablet": settings.columns[1],
+    "--store-theme-cols-mobile": settings.columns[2],
+  } as CSSProperties : undefined;
   return (
-    <main className={`storefront-page storefront-home${isRetail ? " is-retail" : ""}`} id="top" data-theme={store.theme_preset} data-layout={store.storefront_layout} data-style={store.storefront_style}>
+    <main className={`storefront-page storefront-home${isRetail ? " is-retail" : ""}`} id="top" data-theme={store.theme_preset} data-layout={store.storefront_layout} data-style={store.storefront_style} data-theme-density={store.managedTheme?.density}
+      data-theme-font={settings?.font} data-theme-radius={settings?.radius} data-theme-width={settings?.width} style={themeColumns}>
       {closedOnEntry && !acceptsOrders && !closedNoticeDismissed && (
         <StoreClosedNotice paused={!store.accepts_orders} nextOpening={hoursStatus.nextOpening} onDismiss={() => setClosedNoticeDismissed(true)} />
       )}
-      {isRetail ? <RetailStorefront onAccountNavigate={() => { try { sessionStorage.setItem(`growdesk-cart:${store.id}`, JSON.stringify(cart)); document.cookie = `growdesk_customer_store=${encodeURIComponent(store.slug)}; path=/; max-age=2592000; samesite=lax${window.location.protocol === "https:" ? "; secure" : ""}`; } catch {} }} store={store} categories={categories} products={visibleProducts} allProducts={products} reviews={reviews} activeCategory={activeCategory} search={search} cartCount={cartCount} acceptsOrders={acceptsOrders} covers={covers} onCategory={(category) => { setActiveCategory(category); setSearch(""); setShowFullMenu(true); document.getElementById("retail-products")?.scrollIntoView({ behavior: "smooth" }); }} onSearch={setSearch} onSearchSubmit={() => { setShowFullMenu(true); document.getElementById("retail-products")?.scrollIntoView({ behavior: "smooth" }); }} onShowAll={() => resetMenu(true)} onCart={openCart} onAdd={addToCart} onConfirm={(id, optionIds, quantity, buyNow, trigger, variantId) => {
+      {themeSections && <div className="published-theme-slot" onClickCapture={(event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        const link = event.target instanceof Element ? event.target.closest("a") : null;
+        if (!link || link.origin !== window.location.origin || (link.pathname === window.location.pathname && link.search === window.location.search)) return;
+        try { sessionStorage.setItem(`growdesk-cart:${store.id}`, JSON.stringify(cart)); } catch { /* Cart remains available on the current page. */ }
+      }}>{themeSections}</div>}
+      {isRetail ? <RetailStorefront initialProductId={themeEntry?.productId} onAccountNavigate={() => { try { sessionStorage.setItem(`growdesk-cart:${store.id}`, JSON.stringify(cart)); document.cookie = `growdesk_customer_store=${encodeURIComponent(store.slug)}; path=/; max-age=2592000; samesite=lax${window.location.protocol === "https:" ? "; secure" : ""}`; } catch {} }} store={store} categories={categories} products={visibleProducts} allProducts={products} reviews={reviews} activeCategory={activeCategory} search={search} cartCount={cartCount} acceptsOrders={acceptsOrders} covers={covers} onCategory={(category) => { setActiveCategory(category); setSearch(""); setShowFullMenu(true); document.getElementById("retail-products")?.scrollIntoView({ behavior: "smooth" }); }} onSearch={setSearch} onSearchSubmit={() => { setShowFullMenu(true); document.getElementById("retail-products")?.scrollIntoView({ behavior: "smooth" }); }} onShowAll={() => resetMenu(true)} onCart={openCart} onAdd={addToCart} onConfirm={(id, optionIds, quantity, buyNow, trigger, variantId) => {
         if (buyNow && retailCheckoutPending.current) return "Đang kiểm tra phiên đăng nhập.";
         const product = products.find((item) => item.id === id);
         if (!product || !acceptsOrders) return "Cửa hàng chưa thể nhận đơn.";
@@ -859,11 +876,12 @@ export default function StorefrontClient({ store, categories, products, reviews,
 
       {isSectionVisible("hero") && (
         <div className="storefront-banner" style={{ order: contentOrder("hero") }}>
+          {covers.length > 0 && store.managedTheme?.headline && <h2 className="theme-live-headline">{store.managedTheme.headline}</h2>}
           {covers.length ? (
             <StoreBannerSlideshow key={covers.join("|")} urls={covers} storeName={store.name} href="#menu" onOpenMenu={() => resetMenu(true)} />
           ) : (
             <div className="storefront-banner-fallback">
-              <div><h2>{store.name}</h2>{store.description && <p>{store.description}</p>}</div>
+              <div><h2>{store.managedTheme?.headline || store.name}</h2>{store.description && <p>{store.description}</p>}</div>
               <a className="primary-button" href="#menu" onClick={() => resetMenu(true)}>Xem thực đơn <span aria-hidden="true">→</span></a>
             </div>
           )}

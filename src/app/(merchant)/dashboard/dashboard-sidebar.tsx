@@ -32,6 +32,7 @@ const groups: { label: string; items: MenuItem[] }[] = [
   ] },
   { label: "Website", items: [
     { href: "/dashboard/appearance", label: "Giao diện", icon: "appearance", premium: true },
+    { href: "/dashboard/themes", label: "Thư viện giao diện", icon: "appearance" },
     { label: "Trang nội dung", icon: "orders" },
     { label: "Thư viện media", icon: "appearance" },
     { href: "/dashboard/domains", label: "Tên miền", icon: "domains", premium: true },

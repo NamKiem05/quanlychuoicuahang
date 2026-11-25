@@ -1,0 +1,4 @@
+export const recoveryHeaders = {
+  "Cache-Control": "no-store",
+  "Referrer-Policy": "no-referrer",
+};

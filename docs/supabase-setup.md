@@ -94,6 +94,27 @@ Sau khi lưu `.env.local`, khởi động lại `npm run dev`. Mã khởi tạo 
 
 Nếu bật xác nhận email trong Supabase Auth, thêm `http://localhost:3000/auth/callback` vào danh sách **Redirect URLs** trong cấu hình URL của Auth. Sau đó vào `/login`, chọn đăng ký chủ quán; liên kết xác nhận email sẽ mở phiên đăng nhập và chuyển đến `/dashboard`.
 
+Đăng nhập quản trị cần các RPC `platform_account_access` và `growdesk_session_status` từ các migration hiện hữu `202611160016_separate_platform_admin_accounts.sql` và `202611240001_session_controls.sql`. Việc các hàm đã tồn tại chưa xác nhận PostgREST đang dùng đúng hook `growdesk_postgrest_session_guard`; kiểm tra cấu hình hiệu lực của PostgREST và thử phiên đã hết hạn hoặc bị thu hồi trước khi nghiệm thu.
+
+Google, Facebook và xác minh email dùng callback PKCE phía máy chủ. Mỗi môi trường cần cho phép các URL callback mà ứng dụng gửi, gồm biến thể cho khách mua hàng và lời mời nhân viên nếu các luồng này được bật. Cookie xác thực Next.js ở production yêu cầu HTTPS.
+
+### Quên mật khẩu
+
+- Thêm URL đầy đủ `https://<tên-miền-ứng-dụng>/auth/callback?next=reset-password` vào **Authentication → URL Configuration → Redirect URLs** cho từng tên miền phục vụ đăng nhập. Với Supabase local, thêm `http://localhost:3000/auth/callback?next=reset-password` hoặc URL theo cổng dev thực tế.
+- Mẫu email **Reset Password** dùng `{{ .ConfirmationURL }}` để Supabase xác minh liên kết rồi chuyển về callback PKCE. Cấu hình SMTP trong **Supabase Auth** và tắt tính năng viết lại liên kết của nhà cung cấp thư nếu có. Có thể dùng Supabase local và Mailpit để thử mà không gửi thư thật.
+- Nếu hosting hoặc reverse proxy lưu access log, bỏ query string cho `/auth/callback` để mã xác minh không đi vào log.
+- Kiểm tra giới hạn **Authentication → Rate Limits**. GrowDesk giới hạn mỗi trình duyệt một yêu cầu mỗi phút. Supabase Auth áp dụng thêm giới hạn theo tài khoản, dự án và IP. Yêu cầu khôi phục đi từ máy chủ GrowDesk nên giới hạn IP có thể được chia sẻ bởi nhiều người dùng cùng đi qua máy chủ.
+- Mở liên kết bằng đúng trình duyệt, hồ sơ và tên miền đã gửi yêu cầu. Khi gửi một yêu cầu khôi phục mới, dùng email mới nhất vì mã xác minh PKCE của yêu cầu cũ có thể đã bị thay thế. Phiên đặt lại mật khẩu của GrowDesk có hiệu lực tối đa 10 phút tính từ khi callback thành công.
+- Môi trường chạy luồng này cần có migration hiện hữu `202611240001_session_controls.sql`. Trang đặt lại mật khẩu dùng `growdesk_session_status` để từ chối phiên hết hạn hoặc đã bị thu hồi. Sau khi đổi mật khẩu, ứng dụng báo theo phản hồi của yêu cầu đăng xuất toàn bộ từ Supabase. Token truy cập đã cấp có thể vẫn hợp lệ đến lúc hết hạn ở những dịch vụ chỉ xác minh token.
+
+### Hóa đơn dịch vụ GrowDesk
+
+- Triển khai `202611240002_service_invoice_management.sql` sau migration hóa đơn gốc `202611180006_service_invoices.sql` và migration kiểm soát phiên `202611240001_session_controls.sql`. Migration giữ lại hóa đơn và số tiền cũ. Hạn thanh toán và thời điểm tạo riêng sẽ để trống nếu dữ liệu lịch sử chưa có.
+- Admin phát hành từ một yêu cầu thanh toán đã tồn tại, có thể tìm theo tên cửa hàng hoặc mã chuyển khoản. Một yêu cầu có một hóa đơn. Giá lấy từ yêu cầu thanh toán và chỉ việc xác nhận khoản thu hợp lệ mới kích hoạt hoặc gia hạn dịch vụ. Chủ tài khoản thanh toán xem hóa đơn của mình tại **Gói dịch vụ**.
+- Ghi nhận thủ công chỉ dùng cho chuyển khoản đã đối chiếu với sao kê và đúng toàn bộ số tiền. Mã giao dịch ngân hàng dùng cho đối soát thủ công có ràng buộc duy nhất. SePay vẫn xác thực webhook riêng và hai luồng khóa cùng yêu cầu thanh toán để tránh kích hoạt hai lần. Hủy chứng từ giữ nguyên yêu cầu thanh toán gốc. Trường hợp chuyển thiếu, chuyển dư, giao dịch muộn cần đối soát hoặc hoàn tiền nằm ngoài quy trình ghi nhận tự động.
+- Tổng giá trị bao gồm chứng từ đã phát hành, kể cả đã hủy. Tiền đã thu chỉ tính hóa đơn thanh toán hợp lệ chưa hủy. Công nợ chỉ tính yêu cầu đang chờ thanh toán còn hiệu lực. Hóa đơn cần đối soát hiện riêng. Ngày đến hạn tính theo giờ Việt Nam.
+- CSV dùng bộ lọc danh sách, xuất theo số chứng từ và giới hạn 50.000 dòng. Chi tiết có chế độ in A4 và có thể lưu PDF từ hộp thoại in. Đây là chứng từ nội bộ.
+
 ## 6. Cấp quyền admin đầu tiên
 
 Tạo một người dùng mới dành riêng cho quản trị trong **Supabase → Authentication → Users**. Dùng email riêng với tài khoản cửa hàng. Trong SQL Editor, thay địa chỉ mẫu bằng email quản trị vừa tạo và chạy:
@@ -160,3 +181,28 @@ Khi đặt hàng, khách nhập email cùng số điện thoại. Sau khi đơn 
 - Tạo tài khoản chủ cửa hàng chưa tự cấp quyền admin nền tảng.
 - Tài khoản admin nền tảng cần được cấp bằng thao tác quản trị riêng, không thông qua giao diện đăng ký công khai.
 - Ảnh sản phẩm lưu trong bucket công khai `product-images`; chính sách Storage giới hạn tải lên và xóa theo cửa hàng.
+- GHN quote rate limit cần áp dụng migration `202611230004_ghn_quote_rate_limit.sql` và tiếp theo là `202611230005_ghn_quote_rate_limit_atomic.sql` sau các migration GHN hiện có. Nếu `004` đã được áp dụng, chỉ chạy `005`; không chạy lại migration cũ. `005` khóa hai quota theo thứ tự ổn định, chỉ tăng cả IP và cửa hàng khi cả hai còn quota, thu hồi quyền đọc/ghi bảng trực tiếp và đăng ký đúng một Supabase Cron job dọn bucket cũ mỗi 10 phút. Migration kiểm tra `pg_cron` trước khi đăng ký job. Sau khi áp dụng, kiểm tra job `growdesk-clean-ghn-quote-rate-limits` trong Dashboard → Integrations → Cron.
+- Máy chủ cần biến `GHN_QUOTE_RATE_LIMIT_HMAC_KEY`, là khóa riêng 32 byte dạng base64 và khác `GHN_CREDENTIALS_ENCRYPTION_KEY`. Tạo bằng `node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))"`, đặt cùng một giá trị trong môi trường máy chủ/preview cần chạy quote, rồi khởi động lại deployment. Thiếu hoặc sai khóa sẽ làm quote fail closed với 503.
+- IP limiter chỉ đọc `x-vercel-forwarded-for`. Vercel cần trực tiếp nhận request để header này phản ánh IP gốc; nếu đặt proxy trước Vercel, dùng rate limiting tại proxy hoặc cấu hình Trusted Proxy phù hợp để tránh giới hạn theo IP của proxy.
+
+### Theme Studio và thư viện giao diện
+
+- Áp dụng `202611250002_theme_studio.sql` sau các migration danh mục mẫu, ngành hàng và kiểm soát phiên. Các mẫu quản trị cũ được giữ dưới dạng bản nháp chờ Admin phát hành. Storefront chưa kích hoạt theme vẫn dùng cấu hình cũ.
+- Vào **Admin → Giao diện mẫu**, tạo hoặc nhân bản mẫu, lưu bản nháp và phát hành phiên bản riêng. Bố cục hiện dùng các khối trang chủ GrowDesk đã hỗ trợ. **Admin → Danh mục ngành hàng** quản lý nhóm giao diện của mỗi ngành.
+- Vào **Dashboard → Thư viện giao diện** bằng tài khoản chủ cửa hàng. Theme miễn phí được thêm vào thư viện. Theme trả phí tạo yêu cầu chuyển khoản một lần theo thông tin ngân hàng nền tảng. Admin chỉ xác nhận sau khi đối chiếu sao kê, đúng số tiền và mã giao dịch. SePay hiện hữu vẫn dùng cho gói dịch vụ, chưa tự động cấp giấy phép theme.
+- Giấy phép cho phép chọn các phiên bản đã phát hành tương thích với ngành hàng. Chuyển phiên bản giữ cấu hình riêng. Ngừng phân phối giữ giấy phép cũ, còn thu hồi có lý do sẽ đưa storefront về cấu hình cũ.
+- Khi có PostgreSQL test riêng, chạy `supabase/tests/theme_studio.sql`. Bộ SQL dùng dữ liệu mô phỏng trong transaction rollback và không thực hiện giao dịch ngân hàng.
+
+### Theme Builder nhiều trang
+
+- Áp dụng `202611250003_theme_pages.sql` sau `202611250002_theme_studio.sql`. Cấu hình cũ vẫn hợp lệ. Cấu hình mới thêm `schemaVersion: 2` và danh sách trang vào manifest, giữ nguyên hệ thống phiên bản và giấy phép.
+- Các trang phụ được phát hành tại `/{storeSlug}/pages/{themePage}`. Với tên miền cửa hàng, đường dẫn là `/pages/{themePage}`. Cart, tìm kiếm và chi tiết sản phẩm tái sử dụng storefront hiện có. Đường dẫn trang tùy chỉnh và ID sản phẩm/danh mục được kiểm tra theo cửa hàng đang truy cập.
+- Tự lưu ghi nội dung bản nháp của theme Admin đã tạo hoặc bản tùy chỉnh của cửa hàng, dùng thời gian chờ 900 ms và kiểm tra số revision. Khi có xung đột, tải lại trước khi tiếp tục. Cần lưu thông tin danh mục theme bằng nút **Lưu bản nháp** và phát hành bằng thao tác riêng.
+- Chạy kiểm tra schema với `node --experimental-strip-types --test tests/theme-pages.test.mjs`. Chạy `supabase/tests/theme_pages.sql` trên PostgreSQL thử nghiệm riêng sau khi áp dụng migration.
+
+### Quản lý giao diện trong Admin
+
+- Áp dụng `202611250004_theme_admin.sql` sau `202611250003_theme_pages.sql`. Menu **Quản lý giao diện** dẫn tới danh mục, Studio, trang, component, phiên bản, Marketplace, license, hỗ trợ và cấu hình.
+- Gỡ theme khỏi Marketplace hoặc tạm đóng Marketplace chỉ chặn lượt nhận hoặc mua mới. Đơn đang chờ và quyền của cửa hàng đã có giấy phép được giữ lại. Giá hiển thị lấy từ phiên bản đã phát hành, đơn mua giữ giá tại lúc tạo.
+- Cấu hình giới hạn trang tùy chỉnh và component ở **Cấu hình Theme**. Giới hạn được kiểm tra lúc phát hành phiên bản mới. Phiên bản cũ giữ nguyên. Khôi phục nội dung phiên bản chỉ thay bản nháp; phát hành lại cần một số phiên bản mới.
+- **Hỗ trợ giao diện** sử dụng các ticket phân loại Website. Phản hồi, lịch sử, phân công và trạng thái được xử lý qua trang chi tiết ticket hiện có.

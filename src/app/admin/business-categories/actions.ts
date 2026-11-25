@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requirePlatformAdminAccess } from "@/lib/platform-account";
 import { isMerchandiseMode } from "@/lib/merchandise-mode";
+import { themeFamilies } from "@/lib/theme-studio";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function slugify(name: string) {
@@ -19,9 +20,10 @@ export async function saveBusinessCategory(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim();
   const slug = slugify(name);
   const mode = formData.get("merchandise_mode");
-  if (!isMerchandiseMode(mode)) redirect("/admin/business-categories?message=invalid");
+  const family = String(formData.get("theme_family") ?? "");
+  if (!isMerchandiseMode(mode) || !Object.hasOwn(themeFamilies, family)) redirect("/admin/business-categories?message=invalid");
   if ((id && !uuid.test(id)) || name.length < 2 || name.length > 100 || description.length > 500 || !slug || slug.length > 100) redirect("/admin/business-categories?message=invalid");
-  const fields = { name, slug, description, merchandise_mode: mode, updated_at: new Date().toISOString() };
+  const fields = { name, slug, description, merchandise_mode: mode, theme_family: family, updated_at: new Date().toISOString() };
   const result = id ? await supabase.from("business_categories").update(fields).eq("id", id).select("id").maybeSingle() : await supabase.from("business_categories").insert(fields).select("id").maybeSingle();
   if (result.error?.code === "23505") redirect("/admin/business-categories?message=duplicate");
   if (result.error || !result.data) redirect("/admin/business-categories?message=failed");

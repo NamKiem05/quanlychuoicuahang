@@ -6,6 +6,7 @@ import { signOut } from "@/app/(merchant)/dashboard/actions";
 import { getMerchantContext } from "@/app/(merchant)/dashboard/data";
 import { getCurrentMerchantPlan, getMerchantPlanPaymentAvailability, getMerchantPlanWebhookSecret, getPlatformBankAccount } from "@/lib/merchant-billing";
 import { findMerchantPlan, formatPlanAmount, merchantPlans } from "@/lib/merchant-plans";
+import { invoiceCode, invoiceDay, invoiceMoney, invoiceStatusLabel } from "@/lib/admin/invoices";
 import { requestMerchantPlan } from "./actions";
 import PaymentRefresh from "./payment-refresh";
 import CancelPayment from "./cancel-payment";
@@ -33,12 +34,13 @@ const dateFormatter = new Intl.DateTimeFormat("vi-VN", {
 export default async function MerchantPlanPage({ searchParams }: { searchParams: Promise<{ message?: string }> }) {
   const [{ supabase, userId, store, requestedPlan }, query] = await Promise.all([getMerchantContext(), searchParams]);
   const pendingFields = "plan, amount_vnd, transfer_code";
-  const [upgradePending, active, owner, cancellationSchema, paymentAvailability] = await Promise.all([
+  const [upgradePending, active, owner, cancellationSchema, paymentAvailability, invoices] = await Promise.all([
     supabase.from("merchant_plan_payments").select(`${pendingFields}, upgrade_amount_vnd, upgrade_expires_at`).eq("user_id", userId).eq("status", "pending").maybeSingle(),
     getCurrentMerchantPlan(supabase, userId),
     store ? supabase.rpc("get_store_billing_owner", { requested_store: store.id }).maybeSingle<{ billing_owner_id: string | null }>() : { data: null },
     supabase.from("merchant_plan_payments").select("cancelled_at").eq("user_id", userId).limit(0),
     getMerchantPlanPaymentAvailability(supabase),
+    supabase.rpc("my_service_invoices"),
   ]);
   const upgradeAvailable = !upgradePending.error;
   const pending = upgradePending.error?.code === "42703"
@@ -72,6 +74,16 @@ export default async function MerchantPlanPage({ searchParams }: { searchParams:
         <h1>Gói dịch vụ của cửa hàng</h1>
       </div>
       {message && <p className="merchant-plan-notice" role="status">{message}</p>}
+      {Array.isArray(invoices.data) && invoices.data.length > 0 && <section className="merchant-plan-payment">
+        <details><summary>Hóa đơn dịch vụ của tài khoản</summary><ul>
+          {invoices.data.map((invoice) => <li key={invoice.invoice_number}>
+            <strong>{invoiceCode(invoice.invoice_number)} · {invoice.plan_name}</strong>
+            <p>{invoiceStatusLabel(invoice.status)} · Tổng tiền {invoiceMoney(invoice.amount_vnd)} · Đã thu {invoiceMoney(invoice.paid_vnd)} · Còn phải trả {invoiceMoney(invoice.balance_vnd)}</p>
+            <p>Phát hành {invoiceDay(invoice.issued_at)} · Hạn {invoiceDay(invoice.due_on)} · Mã chuyển khoản {invoice.transfer_code}</p>
+          </li>)}
+        </ul></details>
+      </section>}
+      {invoices.error && invoices.error.code !== "PGRST202" && <p className="merchant-plan-notice" role="status">Chưa tải được hóa đơn của tài khoản.</p>}
 
       {!billingAvailable ? (
         <>

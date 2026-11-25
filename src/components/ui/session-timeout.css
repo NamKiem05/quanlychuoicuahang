@@ -1,0 +1,28 @@
+.growdesk-session-warning {
+  position: fixed;
+  z-index: 900;
+  inset-inline-end: 16px;
+  inset-block-end: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  width: min(390px, calc(100% - 32px));
+  padding: 15px;
+  border: 1px solid #e8cb8b;
+  border-radius: 12px;
+  background: #fff8e7;
+  color: #563b14;
+  box-shadow: 0 8px 25px #38240625;
+}
+
+.growdesk-session-warning p { flex-basis: 100%; margin: 0; }
+.growdesk-session-warning strong { font-variant-numeric: tabular-nums; }
+.growdesk-session-warning button {
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: #664516;
+  color: white;
+  cursor: pointer;
+}

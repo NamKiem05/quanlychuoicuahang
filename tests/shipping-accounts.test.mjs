@@ -113,7 +113,10 @@ test("every shipping mutation authorizes before acquiring the service-role clien
   for (const [claims, support, redirect] of [[null, false, "/login"], [{ sub: id }, false, "/admin"], [{ sub: id }, true, "/admin/tickets"]]) {
     globalThis.shippingTestSession = {
       auth: { getClaims: async () => ({ data: { claims } }) },
-      rpc: async (name) => ({ data: name === "has_support_ticket_permission" && support }),
+      rpc: async (name) => {
+        if (name === "growdesk_session_status") return { data: { status: "active" } };
+        return { data: name === "has_support_ticket_permission" && support };
+      },
     };
     for (const action of Object.values(actions)) {
       await assert.rejects(action({}, form({ id, code: "ghn", token: credential })), { message: `redirect:${redirect}` });
@@ -126,7 +129,10 @@ test("platform account save sends encrypted values to the database and returns a
   env(t, "SHIPPING_CREDENTIAL_KEY_V1", randomBytes(32).toString("base64"));
   globalThis.shippingTestSession = {
     auth: { getClaims: async () => ({ data: { claims: { sub: id } } }) },
-    rpc: async (name) => ({ data: name === "is_platform_admin" }),
+    rpc: async (name) => {
+      if (name === "growdesk_session_status") return { data: { status: "active" } };
+      return { data: name === "is_platform_admin" };
+    },
   };
   const logs = ["log", "error", "warn", "info", "debug"].map((method) => t.mock.method(console, method, () => {}));
   let saved;
@@ -176,6 +182,16 @@ test("legacy GHN tokens and Staging shipment requests still work with their orig
   assert.equal(JSON.parse(request.body).client_order_code, `GD-${id}`);
 });
 
+test("GHN shipment fees must be safe nonnegative integers", async (t) => {
+  const fetch = t.mock.method(globalThis, "fetch", async () => Response.json({ code: 200, data: { total_fee: 0 } }));
+  const payload = { client_order_code: `GD-${id}` };
+  assert.equal((await ghnShipmentRequest(credential, 123, "preview", payload)).totalFee, 0);
+  for (const total_fee of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    fetch.mock.mockImplementation(async () => Response.json({ code: 200, data: { total_fee } }));
+    await assert.rejects(ghnShipmentRequest(credential, 123, "preview", payload), /GHN_RESPONSE_INVALID/);
+  }
+});
+
 test("the phase 2 GHN check returns a sanitized timeout outcome", async (t) => {
   env(t, "SHIPPING_CREDENTIAL_ACTIVE_VERSION", "v1");
   env(t, "SHIPPING_CREDENTIAL_KEY_V1", randomBytes(32).toString("base64"));
@@ -195,7 +211,10 @@ test("checkAccount uses the authenticated actor and respects authoritative final
   const revision = "45000000-0000-4000-8000-000000000001";
   globalThis.shippingTestSession = {
     auth: { getClaims: async () => ({ data: { claims: { sub: caller } } }) },
-    rpc: async (name) => ({ data: name === "is_platform_admin" }),
+    rpc: async (name) => {
+      if (name === "growdesk_session_status") return { data: { status: "active" } };
+      return { data: name === "is_platform_admin" };
+    },
   };
   let disposition;
   globalThis.shippingTestAdmin = () => ({

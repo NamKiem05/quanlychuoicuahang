@@ -139,7 +139,8 @@ async function getManagedStoreId(supabase: Awaited<ReturnType<typeof createClien
 
 export async function signOut() {
   const supabase = await createClient();
-  await supabase.auth.signOut();
+  const result = await supabase.auth.signOut({ scope: "global" }).catch(() => null);
+  if (!result || result.error) redirect("/auth/signout-failed");
   (await cookies()).delete(activeStoreCookie);
   redirect("/login");
 }

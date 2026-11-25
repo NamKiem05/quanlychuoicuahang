@@ -3,7 +3,7 @@ import { getMerchantContext } from "@/app/(merchant)/dashboard/data";
 import { requireExpectedStore } from "@/lib/active-store";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptGhnToken,ghnShipmentRequest,ghnLocations,type GhnShipmentPayload } from "@/lib/shipping/ghn";
-import { hasSignificantParcelChange, type GhnCheckoutSnapshot } from "@/lib/shipping/packaging";
+import { hasSignificantParcelChange, parseGhnCheckoutSnapshot, type GhnCheckoutSnapshot } from "@/lib/shipping/packaging";
 import { syncGhnStatus } from "@/lib/shipping/sync-ghn-status";
 import { revalidatePath } from "next/cache";
 
@@ -65,7 +65,9 @@ async function context(form:FormData) {
   if(connectionError || !connection || connection.environment!=="staging") throw new Error("NO_CONNECTION");
   const snapshot = await admin.from("orders").select("ghn_shipping_quote").eq("id", order.id).eq("store_id", ctx.store.id).single();
   if (snapshot.error && snapshot.error.code !== "42703" && snapshot.error.code !== "PGRST204") throw snapshot.error;
-  const quote = snapshot.data?.ghn_shipping_quote as GhnCheckoutSnapshot | null | undefined;
+  const savedQuote = snapshot.data?.ghn_shipping_quote;
+  const quote = savedQuote == null ? null : parseGhnCheckoutSnapshot(savedQuote);
+  if (savedQuote != null && !quote) throw new Error("INVALID_SHIPPING_SNAPSHOT");
   if (quote && quote.shop_id !== Number(connection.shop_id)) throw new Error("NO_CONNECTION");
   return {ctx,store:ctx.store,order,admin,connection,quote,token:decryptGhnToken(connection.token_ciphertext,ctx.store.id)};
 }

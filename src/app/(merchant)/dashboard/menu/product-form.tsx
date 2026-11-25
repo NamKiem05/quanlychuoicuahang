@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { createProduct, deleteProduct, setProductVisibility, updateProduct } from "../actions";
 import ProductImageField from "./product-image-field";
-import { dimensionFields, type Dimensions } from "@/lib/shipping/packaging";
+import { dimensionFields, type ProductDimensions } from "@/lib/shipping/packaging";
 import VariantBuilder from "./variant-builder";
 import type { MerchandiseMode } from "@/lib/merchandise-mode";
 
@@ -17,7 +17,7 @@ type Product = {
   image_url: string | null;
   description: string;
   hasVariants?: boolean;
-  shipping_dimensions?: Dimensions | null;
+  shipping_dimensions?: ProductDimensions | null;
   stock_quantity: number | null;
   low_stock_threshold: number;
 };
@@ -76,6 +76,7 @@ export default function ProductForm({
               <label key={key}>{label}<input name={key} type="number" min={1} max={max} step={1} defaultValue={product?.shipping_dimensions?.[key]} /></label>
             ))}
           </div>
+          <label><input type="checkbox" name="stackable" defaultChecked={product?.shipping_dimensions?.stackable === true} /> Có thể xếp chồng an toàn khi đóng gói</label>
         </fieldset>}
         <div className="product-image-form-field"><span>{mode === "food" ? "Ảnh món" : "Ảnh sản phẩm"} <span className="field-hint">JPG, PNG hoặc WebP · tối đa 5 MB</span></span><ProductImageField storeId={storeId} initialUrl={product?.image_url ?? ""} onUploadingChange={setIsUploading} /></div>
         <label>Mô tả<textarea name="description" rows={2} maxLength={2000} defaultValue={product?.description ?? ""} placeholder={mode === "food" ? "Mô tả ngắn về món" : "Mô tả ngắn về sản phẩm"} /></label>

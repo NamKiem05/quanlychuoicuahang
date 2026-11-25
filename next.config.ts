@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
+  logging: { incomingRequests: { ignore: [/\/auth\/callback(?:\?|$)/] } },
   experimental: { serverActions: { bodySizeLimit: "6mb" } },
   turbopack: {
     rules: {

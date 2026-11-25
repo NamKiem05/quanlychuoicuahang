@@ -99,7 +99,7 @@ export async function ghnShipmentRequest(token:string,shopId:number,mode:"previe
   if(result && typeof result === "object" && "code_message" in result && result.code_message === "FROM_ADDRESS_CONVERT_FAIL") throw new Error("GHN_FROM_ADDRESS_INVALID");
   if(!response.ok || !result || typeof result!=="object" || !("code" in result) || result.code!==200 || !("data" in result) || !result.data || typeof result.data!=="object") throw new Error("GHN_PROVIDER_REJECTED");
   const data=result.data as {order_code?:unknown;total_fee?:unknown;expected_delivery_time?:unknown};
-  if(typeof data.total_fee!=="number" || !Number.isFinite(data.total_fee) || data.total_fee<0 || (mode === "create" && (typeof data.order_code!=="string" || !data.order_code))) throw new Error("GHN_RESPONSE_INVALID");
+  if(typeof data.total_fee!=="number" || !Number.isSafeInteger(data.total_fee) || data.total_fee<0 || (mode === "create" && (typeof data.order_code!=="string" || !data.order_code))) throw new Error("GHN_RESPONSE_INVALID");
   const expected=typeof data.expected_delivery_time === "string" && Number.isFinite(Date.parse(data.expected_delivery_time)) ? data.expected_delivery_time : null;
   return {orderCode:typeof data.order_code==="string" && data.order_code ? data.order_code : null,totalFee:data.total_fee,expectedDelivery:expected};
 }

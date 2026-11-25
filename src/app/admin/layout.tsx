@@ -1,9 +1,11 @@
+import SessionTimeout from "@/components/ui/session-timeout";
 import { Suspense, type ReactNode } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import AdminHeader from "./admin-header";
 import AdminNavigation from "./admin-navigation";
 import LoadingScreen from "@/components/ui/loading-screen";
 import AdminChatNotificationsProvider from "./admin-chat-notifications";
@@ -49,30 +51,21 @@ async function AdminRequestLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  const { data: stores } = await supabase.from("stores").select("id, name").order("name");
+  const [storeResult, { data: profile }] = await Promise.all([
+    supportOnly ? Promise.resolve({ data: [], error: null }) : supabase.from("stores").select("id, name").order("name"),
+    supabase.from("profiles").select("display_name").eq("id", authData.claims.sub).maybeSingle(),
+  ]);
   return (
-    <AdminChatNotificationsProvider stores={stores ?? []}>
+    <AdminChatNotificationsProvider stores={storeResult.data ?? []}>
       <div className="admin-app-shell admin-platform-shell">
         <AdminNavigation supportOnly={supportOnly} platformName={branding.platform_name} logoUrl={branding.logo_url} />
         <div className="admin-workspace">
-          <header className="admin-topbar">
-            {!supportOnly && <form className="admin-topbar-search" action="/admin/orders" method="get">
-              <span aria-hidden="true">⌕</span>
-              <input type="search" name="q" placeholder="Tìm mã đơn, khách hàng..." aria-label="Tìm đơn hàng hoặc khách hàng" />
-              <kbd>Enter</kbd>
-            </form>}
-            <div className="admin-topbar-actions">
-              <Link className="admin-topbar-store-link" href="/">Trang giới thiệu ↗</Link>
-              <div className="admin-topbar-profile" aria-label="Tài khoản quản trị viên">
-                <span className="admin-topbar-avatar">Q</span>
-                <span><b>{supportOnly ? "Nhân viên hỗ trợ" : "Quản trị viên"}</b><small>{supportOnly ? "Hỗ trợ ticket" : "Admin nền tảng"}</small></span>
-              </div>
-              <form action={signOut}><button className="secondary-submit" type="submit">Đăng xuất</button></form>
-            </div>
-          </header>
-          <div className="admin-page-content"><Suspense fallback={<LoadingScreen contained />}>{children}</Suspense></div>
+          <AdminHeader storeError={Boolean(storeResult.error)} supportOnly={supportOnly} userId={authData.claims.sub} name={profile?.display_name || authData.claims.email || "Tài khoản"} stores={storeResult.data ?? []} />
+          <div className="admin-page-content"><SessionTimeout /><Suspense fallback={<LoadingScreen contained />}>{children}</Suspense></div>
         </div>
       </div>
     </AdminChatNotificationsProvider>
   );
 }
+
+

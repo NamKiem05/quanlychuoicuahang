@@ -7,8 +7,9 @@ import { usePathname } from "next/navigation";
 import { useState, type CSSProperties } from "react";
 import { useAdminChatNotifications } from "./admin-chat-notifications";
 import styles from "@/components/chat/chat-notifications.module.css";
+import { themeAdminMenu, themeAdminPath } from "@/lib/theme-admin-menu";
 
-type MenuItem = { label: string; icon: Parameters<typeof SidebarIcon>[0]["name"]; href?: string; children?: { label: string; href?: string }[] };
+type MenuItem = { label: string; icon: Parameters<typeof SidebarIcon>[0]["name"]; href?: string; children?: { label: string; href?: string; icon?: Parameters<typeof SidebarIcon>[0]["name"] }[] };
 const groups: { label: string; items: MenuItem[] }[] = [
   { label: "Tổng quan", items: [{ href: "/admin", label: "Dashboard", icon: "overview" }] },
   { label: "Quản lý kinh doanh", items: [
@@ -26,7 +27,7 @@ const groups: { label: string; items: MenuItem[] }[] = [
   ] },
   { label: "Quản lý nền tảng", items: [
     { href: "/admin/domains", label: "Tên miền & Website", icon: "domains" },
-    { href: "/admin/themes", label: "Giao diện mẫu", icon: "appearance" },
+    { label: "Quản lý giao diện", icon: "appearance", children: themeAdminMenu.map(item => ({ ...item, href: themeAdminPath(item.slug) })) },
     { href: "/admin/business-categories", label: "Danh mục ngành hàng", icon: "menu" },
     { label: "Quản lý nội dung", icon: "orders", children: [
       { label: "Quản lý trang giới thiệu" },
@@ -57,6 +58,7 @@ const groups: { label: string; items: MenuItem[] }[] = [
     { href: "/admin/settings", label: "Cấu hình hệ thống", icon: "settings" },
   ] },
 ];
+export const adminHeaderRoutes = groups.flatMap(group => group.items.flatMap(item => item.children ?? [item])).flatMap(item => item.href ? [{ href: item.href, label: item.label }] : []);
 const items = groups.flatMap((group) => group.items);
 
 const unreadBadgeStyle: CSSProperties = {
@@ -93,7 +95,7 @@ export default function AdminNavigation({ supportOnly = false, platformName, log
   );
 
   function isActive(href: string) {
-    return href === "/admin" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+    return href === "/admin" || href === "/admin/themes" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
   }
 
   function renderLink(item: MenuItem) {
@@ -102,7 +104,7 @@ export default function AdminNavigation({ supportOnly = false, platformName, log
       return <details className="admin-sidebar-submenu" key={`${item.label}:${active}`} open={active || undefined}>
       <summary className={`admin-sidebar-link${active ? " active" : ""}`}><SidebarIcon name={item.icon} /><span>{item.label}</span><span className="admin-sidebar-submenu-arrow" aria-hidden="true">⌄</span></summary>
       <div className="admin-sidebar-submenu-items">{item.children.map((child) => child.href
-        ? <Link key={child.label} href={child.href} className={`admin-sidebar-submenu-link${isActive(child.href) ? " active" : ""}`} aria-current={isActive(child.href) ? "page" : undefined} onClick={() => setSettingsOpen(false)}>{child.label}</Link>
+        ? <Link key={child.label} href={child.href} className={`admin-sidebar-submenu-link${isActive(child.href) ? " active" : ""}`} aria-current={isActive(child.href) ? "page" : undefined} onClick={() => setSettingsOpen(false)}>{child.icon ? <span className="admin-theme-sublink"><SidebarIcon name={child.icon} />{child.label}</span> : child.label}</Link>
         : <span key={child.label} className="admin-sidebar-submenu-link is-unavailable" aria-disabled="true" title="Chức năng chưa được triển khai">{child.label}<small>Sắp có</small></span>)}</div>
     </details>;
     }
@@ -118,7 +120,7 @@ export default function AdminNavigation({ supportOnly = false, platformName, log
   }
 
   return (
-    <aside className="admin-sidebar">
+    <aside id="platform-sidebar" className="admin-sidebar">
       <Link className="brand admin-sidebar-brand" href="/" aria-label={`${platformName} - trang giới thiệu`}>
         {logoUrl && <Image src={logoUrl} width={180} height={72} alt="" unoptimized style={{ objectFit: "contain" }} />}
         
@@ -145,3 +147,4 @@ export default function AdminNavigation({ supportOnly = false, platformName, log
     </aside>
   );
 }
+

@@ -5,6 +5,7 @@ import { saveProvider, toggleProvider } from "../actions";
 import { ShippingDialog, ShippingForm } from "../forms";
 import { shippingReadError, type Provider } from "../model";
 import { pageSize, Pagination, readPage, type ShippingQuery } from "../pagination";
+import { ShippingHeading, ShippingStatus } from "../presentation";
 
 const path = "/admin/shipping/providers";
 export const instant = false;
@@ -32,28 +33,27 @@ export default async function ProvidersPage({ searchParams }: { searchParams: Pr
   const providers: Provider[] = data ?? [];
 
   return <main className="admin-content">
-    <header className="shipping-admin-heading">
-      <div>
-        <h1 className="admin-page-title">Nhà cung cấp vận chuyển</h1>
-        <p className="dashboard-intro">Quản lý danh mục và xem khả năng tích hợp của từng nhà cung cấp.</p>
-      </div>
+    <ShippingHeading section="providers" title="Nhà cung cấp vận chuyển"
+      description="Quản lý danh mục và xem khả năng tích hợp của từng nhà cung cấp.">
       {!error && <ShippingDialog label="Thêm nhà cung cấp" title="Thêm nhà cung cấp"><ProviderForm /></ShippingDialog>}
-    </header>
+    </ShippingHeading>
     {error ? <p className="admin-error" role="alert">{shippingReadError(error.code, "Chưa tải được danh mục nhà cung cấp.")}</p> : <section className="admin-store-list">
+      <div className="shipping-list-heading"><h2>Danh mục nhà cung cấp</h2><span>{count ?? 0} nhà cung cấp</span></div>
       <div className="admin-table-scroll">
         <table className="admin-data-table">
           <thead><tr><th>Nhà cung cấp</th><th>Mã</th><th>Danh mục</th><th>Tích hợp</th><th>Môi trường hỗ trợ</th><th>Thao tác</th></tr></thead>
           <tbody>
             {providers.length === 0 && <tr><td colSpan={6}>Chưa có nhà cung cấp trên trang này.</td></tr>}
             {providers.map((provider) => <tr key={provider.code}>
-              <td>
+              <td><div className="shipping-provider-identity">
                 {/* eslint-disable-next-line @next/next/no-img-element -- Remote logos use browser requests without server fetching. */}
-                {provider.logo_url && <img className="shipping-provider-logo" src={provider.logo_url} alt="" loading="lazy" referrerPolicy="no-referrer" />}
-                {provider.name}
-              </td>
-              <td>{provider.code}</td>
-              <td>{provider.catalog_enabled ? "Đang hiển thị" : "Đã tắt"}</td>
-              <td>{provider.integration_enabled ? "Đang hoạt động" : "Chưa kích hoạt"}</td>
+                {provider.logo_url ? <img className="shipping-provider-logo" src={provider.logo_url} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                  : <span className="shipping-provider-logo" aria-hidden="true">{provider.name.slice(0, 2).toUpperCase()}</span>}
+                <strong>{provider.name}</strong>
+              </div></td>
+              <td><code>{provider.code}</code></td>
+              <td><ShippingStatus tone={provider.catalog_enabled ? "positive" : "neutral"}>{provider.catalog_enabled ? "Đang hiển thị" : "Đã tắt"}</ShippingStatus></td>
+              <td><ShippingStatus tone={provider.integration_enabled ? "positive" : "neutral"}>{provider.integration_enabled ? "Đang hoạt động" : "Chưa kích hoạt"}</ShippingStatus></td>
               <td>{provider.code === "ghn" ? "GHN Staging (kiểm tra kết nối)" : "Chưa hỗ trợ"}</td>
               <td><div className="shipping-admin-actions">
                 <ShippingDialog label="Chỉnh sửa" title={`Chỉnh sửa ${provider.name}`}><ProviderForm key={`${provider.name}:${provider.logo_url}`} provider={provider} /></ShippingDialog>
