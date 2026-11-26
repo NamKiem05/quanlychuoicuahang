@@ -39,8 +39,11 @@ export async function manageStoreTheme(form: FormData) {
     const release = String(form.get("release") ?? "");
     const expected_revision = Number(form.get("revision"));
     if (!themeIdPattern.test(release) || !Number.isSafeInteger(expected_revision) || expected_revision < 0) back("invalid");
-    const { error } = await supabase.rpc("select_store_theme_version", { shop, theme, release, expected_revision });
+    const { data, error } = await supabase.rpc("apply_store_theme_release", { shop, theme, release, expected_revision });
     if (error) back(error.code === "40001" ? "conflict" : "failed");
+    if (data?.status === "conflict") back("conflict");
+    if (data?.status === "incompatible") back("incompatible_version");
+    if (data?.status !== "success") back("failed");
   } else {
     const expected_revision = Number(form.get("revision"));
     if ((operation !== "draft" && operation !== "publish" && operation !== "reset" && operation !== "deactivate") || !Number.isSafeInteger(expected_revision)

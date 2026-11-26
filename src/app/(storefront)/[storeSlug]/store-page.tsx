@@ -8,7 +8,8 @@ import StorefrontClient, {
   type StorefrontReview,
 } from "@/components/storefront/storefront-client";
 import { createClient } from "@/lib/supabase/server";
-import { readThemeManifest } from "@/lib/theme-studio";
+import { readPublicThemeManifest } from "@/lib/theme-studio";
+import { resolveThemePage } from "@/lib/theme-pages";
 import ThemeSections from "@/components/storefront/theme-sections";
 import type { OrderHours } from "@/lib/store-order-hours";
 import {
@@ -36,11 +37,14 @@ export async function generateMetadata({ params }: Pick<StorePageProps, "params"
 
   if (!store) return { title: "Không tìm thấy cửa hàng" };
   const { data } = await supabase.rpc("get_public_store_theme", { target_store: store.id });
-  const page = readThemeManifest(data)?.pages?.find(item => item.slug === (themePage ?? "home") && item.visible);
-  const title = page?.title ? `${page.title} | ${store.name}` : `${store.name} | Cửa hàng trực tuyến`;
-  const description = page?.description || store.description || `Xem sản phẩm và đặt hàng từ ${store.name}.`;
+  const page = resolveThemePage(readPublicThemeManifest(data)?.pages ?? [], themePage);
+  if (themePage && !page) return { title: "Không tìm thấy trang", robots: { index: false, follow: false } };
+  const title = page?.meta?.seoTitle || (page?.title ? `${page.title} | ${store.name}` : `${store.name} | Cửa hàng trực tuyến`);
+  const description = page?.meta?.seoDescription || page?.description || store.description || `Xem sản phẩm và đặt hàng từ ${store.name}.`;
   return {
-    title, description, openGraph: { title, description },
+    title, description, openGraph: { title: page?.meta?.ogTitle || title, description: page?.meta?.ogDescription || description,
+      ...(page?.meta?.ogImage ? { images: [page.meta.ogImage] } : {}) },
+    ...(page?.meta?.noindex ? { robots: { index: false } } : {}),
   };
 }
 
@@ -174,9 +178,9 @@ export default async function StorePage({ params, searchParams, hosted }: StoreP
     ? await supabase.rpc("store_ghn_checkout_enabled", { target_store: store.id })
     : { data: false };
 
-  const publishedTheme = readThemeManifest(themeData);
+  const publishedTheme = readPublicThemeManifest(themeData);
   const pages = publishedTheme?.pages ?? [];
-  const page = pages.find(item => item.slug === (themePage ?? "home") && item.visible);
+  const page = resolveThemePage(pages, themePage);
   if (themePage && !page) notFound();
   const inputs = themePage ? await searchParams : undefined;
   const category = page?.kind === "category" ? categories.find(item => item.id === inputs?.category)?.name : undefined;
@@ -186,7 +190,7 @@ export default async function StorePage({ params, searchParams, hosted }: StoreP
   const search = page?.kind === "search" && typeof inputs?.search === "string" ? inputs.search.slice(0,120) : undefined;
   const sections = pages.length > 0 ? <ThemeSections store={store} products={products} categories={categories} reviews={reviews}
     pages={pages} page={page} family={typeof themeFamily === "string" ? themeFamily : "general"} base={hosted ? "" : `/${storeSlug}`} /> : null;
-  if (page && ["contact", "about", "custom"].includes(page.kind)) {
+  if (themePage && page && ["contact", "about", "custom"].includes(page.kind)) {
     return <main className="storefront-page storefront-home" data-theme={publishedTheme?.preset} data-style={publishedTheme?.style}>{sections}</main>;
   }
   return (

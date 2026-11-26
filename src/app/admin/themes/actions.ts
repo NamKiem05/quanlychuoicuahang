@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requirePlatformAdminAccess } from "@/lib/platform-account";
 import { readThemeManifest, themeFamilies, themeIdPattern } from "@/lib/theme-studio";
-import { themeBlocks } from "@/lib/theme-pages";
 
 function back(id = "", message = "failed", view = "studio"): never {
   redirect(`/admin/themes/${view === "pages" ? "pages" : "studio"}?${new URLSearchParams({ ...(id ? { edit: id } : {}), message })}`);
@@ -16,8 +15,10 @@ export async function autosaveThemeDraft(theme: string, revision: number, value:
   if (!themeIdPattern.test(theme) || !Number.isSafeInteger(revision) || revision < 0 || !config) return { error: "invalid" };
   try {
     const supabase = await createClient();
+    await requirePlatformAdminAccess(supabase);
     const { data, error } = await supabase.rpc("admin_autosave_theme", { theme, expected_revision: revision, config });
-    if (error || typeof data !== "number") return { error: error?.code === "40001" ? "conflict" : "unavailable" };
+    if (error || typeof data !== "number") return { error: error?.code === "40001" ? "conflict" :
+      error?.code === "22023" || error?.code === "PT409" ? "invalid" : "unavailable" };
     return { revision: data };
   } catch {
     return { error: "unavailable" };
@@ -103,16 +104,13 @@ export async function updateThemeAdmin(form: FormData) {
   const command = form.get("command");
   const theme = String(form.get("theme") ?? "");
   const target = command === "policy" ? "/admin/themes/settings" :
-    command === "components" ? "/admin/themes/components" : form.get("view") === "marketplace" ? "/admin/themes/marketplace" : "/admin/themes";
+    form.get("view") === "marketplace" ? "/admin/themes/marketplace" : "/admin/themes";
   let failed = true;
-  if (command === "policy" || command === "components") {
-    const blocked = [...new Set(form.getAll("disabled").map(String))];
+  if (command === "policy") {
     const rawLimit = form.get("max_custom_pages");
-    const customPages = command === "components" ? null : rawLimit ? Number(rawLimit) : NaN;
-    const open = command === "components" ? null : form.has("marketplace_open");
-    if ((customPages === null || (Number.isInteger(customPages) && customPages >= 0 && customPages <= 16))
-      && blocked.every(component => Object.hasOwn(themeBlocks, component))) {
-      const { error } = await supabase.rpc("admin_update_theme_policy", { open_marketplace: open, custom_pages: customPages, blocked });
+    const customPages = rawLimit ? Number(rawLimit) : NaN;
+    if (Number.isInteger(customPages) && customPages >= 0 && customPages <= 16) {
+      const { error } = await supabase.rpc("admin_update_theme_policy", { open_marketplace: form.has("marketplace_open"), custom_pages: customPages, blocked: null });
       failed = Boolean(error);
     }
   } else if (themeIdPattern.test(theme)) {
@@ -127,19 +125,6 @@ export async function updateThemeAdmin(form: FormData) {
   revalidatePath("/admin/themes", "layout");
   revalidatePath("/dashboard/themes");
   redirect(`${target}?message=${failed ? "failed" : "saved"}`);
-}
-
-export async function restoreThemeDraft(form: FormData) {
-  const supabase = await createClient();
-  await requirePlatformAdminAccess(supabase);
-  const theme = String(form.get("theme") ?? "");
-  const release = String(form.get("release") ?? "");
-  const expected_revision = Number(form.get("revision"));
-  if (!themeIdPattern.test(theme) || !themeIdPattern.test(release) || !Number.isSafeInteger(expected_revision) || expected_revision < 0 || form.get("confirm") !== "yes") back("", "invalid");
-  const { error } = await supabase.rpc("admin_restore_theme_version", { theme, release, expected_revision });
-  if (error) back(theme, error.code === "40001" ? "conflict" : "failed");
-  revalidatePath("/admin/themes", "layout");
-  back(theme, "saved");
 }
 
 export async function setThemeSupportPriority(form: FormData) {

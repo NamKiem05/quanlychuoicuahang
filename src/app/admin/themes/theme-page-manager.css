@@ -1,0 +1,21 @@
+.page-manager,.page-manager-section { display:grid; gap:16px; min-width:0; }
+.page-manager-section { margin:0; }
+.page-manager-scroll { overflow:auto; }
+.page-manager-table { width:100%; border-collapse:collapse; text-align:left; font-size:.875rem; }
+.page-manager-table :is(th,td) { padding:12px; border-bottom:1px solid #e2e8f0; vertical-align:top; }
+.page-manager-table thead { background:#f1f5f9; white-space:nowrap; }
+.page-manager-table small { display:block; margin:3px 0; color:#475569; font-weight:400; }
+.page-manager-table code { white-space:nowrap; }
+.page-manager-table td:last-child { min-width:210px; }
+.page-manager-links,.page-manager-command { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+.page-manager-links { margin-block:5px; }
+.page-manager :is(summary,button) { cursor:pointer; }
+.page-template-preview { padding:12px; border:1px solid #dbe5ed; border-radius:10px; background:#f7fafc; margin-block:8px; overflow-wrap:anywhere; }
+.page-template-preview p { margin:4px 0; }
+.page-manager-seo[open] summary { margin-block-end:10px; }
+.page-manager-dialog { max-width:min(90vw,480px); margin:auto; padding:20px; border:1px solid #cbd5e1; border-radius:12px; background:#fff; }
+.page-manager-dialog::backdrop { background:#0f172a99; }
+.page-manager-skeleton { min-height:105px; border-radius:12px; background:#e2e8f0; animation:page-manager-pulse 1.3s ease-in-out infinite alternate; }
+.page-manager-skeleton-list { min-height:260px; }
+@keyframes page-manager-pulse { to { opacity:.45; } }
+@media (prefers-reduced-motion:reduce) { .page-manager-skeleton { animation:none; } }

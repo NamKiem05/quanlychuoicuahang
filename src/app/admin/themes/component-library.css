@@ -1,0 +1,30 @@
+.component-library,.component-detail,.component-preview { display:grid; min-width:0; gap:14px; }
+.component-library { padding-top:12px; }
+.component-library-skeleton { min-height:260px; background:#e2e8f0; border-radius:14px; animation:component-library-pulse 1.3s ease-in-out infinite alternate; }
+@keyframes component-library-pulse { to { opacity:.45; } }
+@media (prefers-reduced-motion:reduce) { .component-library-skeleton { animation:none; } }
+.component-library .themes-grid { grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr)); }
+.component-card { display:grid; align-content:start; gap:8px; min-width:0; }
+.component-card :is(h2,p) { margin:0; }
+.component-card h2 { font-size:1rem; }
+.component-thumbnail { height:116px; overflow:hidden; background:#edf5fb; border:1px solid #dbe5ed; border-radius:10px; padding:10px; font-size:.72rem; }
+.component-thumbnail h2 { font-size:.82rem; }
+.component-thumbnail :is(ul,p) { margin-block:5px; }
+.component-library .theme-badge[data-status="active"] { color:#166534; background:#dcfce7; }
+.component-library .theme-badge[data-status="disabled"] { color:#991b1b; background:#fee2e2; }
+.component-library .theme-badge[data-status="deprecated"] { color:#854d0e; background:#fef3c7; }
+.component-facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,155px),1fr)); gap:8px; margin:0; }
+.component-facts div { padding:9px; background:#f1f5f9; border-radius:8px; }
+.component-facts dt { font-weight:700; }
+.component-facts dd { margin:4px 0 0; overflow-wrap:anywhere; }
+.component-table-scroll,.component-preview-viewport { overflow-x:auto; }
+.component-table { width:100%; border-collapse:collapse; text-align:left; }
+.component-table :is(th,td) { padding:8px 12px; border-bottom:1px solid #e2e8f0; }
+.component-table thead { background:#f1f5f9; }
+.component-preview :is(label,input,textarea,select) { min-width:0; }
+.component-preview label { display:grid; gap:5px; }
+.component-preview label:has(input[type="checkbox"]) { display:flex; }
+.component-preview-viewport { padding:12px; background:#eef4fb; border-radius:8px; }
+.component-preview button[aria-pressed="true"] { outline:2px solid #2563eb; }
+.component-status-dialog { max-width:min(92vw,460px); margin:auto; padding:20px; border:1px solid #cbd5e1; border-radius:12px; background:#fff; }
+.component-status-dialog::backdrop { background:#0f172a99; }

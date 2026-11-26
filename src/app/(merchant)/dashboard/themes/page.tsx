@@ -15,16 +15,18 @@ const messages: Record<string,string> = {
   conflict: "Bản nháp hoặc giao diện đang dùng đã thay đổi. Hãy thử lại.", pending: "Đã tạo đơn chờ chuyển khoản.",
   claimed: "Giao diện đã có trong thư viện. Anh có thể kích hoạt.", saved: "Đã lưu bản nháp riêng của cửa hàng.",
   updated: "Đã cập nhật giao diện đang hiển thị.",
+  incompatible_version: "Phiên bản đích xung đột với ngành hàng hoặc cấu hình tùy chỉnh. Website vẫn dùng phiên bản trước.",
 };
 const money = (amount:number) => `${amount.toLocaleString("vi-VN")} ₫`;
 
 export default async function Marketplace({ searchParams }: { searchParams: Promise<Record<string,string | undefined>> }) {
   const [{supabase,store,membership},query] = await Promise.all([getMerchantContext(),searchParams]);
   if (!store || membership?.role !== "owner") redirect("/dashboard");
-  const [list,state,orders] = await Promise.all([
+  const [list,state,orders,availability] = await Promise.all([
     supabase.rpc("list_store_themes",{shop:store.id}),
     supabase.from("storefront_store_theme").select("theme_id,version_id,draft,published,revision").eq("store_id",store.id).eq("is_active",true).maybeSingle(),
     supabase.from("storefront_theme_purchases").select("id,transfer_code,amount_vnd,created_at,confirmed_at").eq("store_id",store.id).order("created_at", { ascending: false }).limit(30),
+    supabase.rpc("theme_component_availability"),
   ]);
   const items = (list.data ?? []) as ThemeProduct[];
   const existing = state.data;
@@ -32,6 +34,18 @@ export default async function Marketplace({ searchParams }: { searchParams: Prom
   const availableVersions = (versions?.data ?? []) as { id: string; version: string }[];
   const active = items.find(item => item.id === existing?.theme_id && item.licensed);
   const draft = readThemeManifest(existing?.draft) ?? readThemeManifest(existing?.published) ?? readThemeManifest(active?.manifest);
+  const preview = active && draft ? await Promise.all([
+    supabase.from("stores").select("name,description,phone,address").eq("id", store.id).single(),
+    supabase.from("products").select("id,name,price:price_vnd,image:image_url").eq("store_id", store.id).eq("status","active").order("created_at",{ascending:false}).limit(24),
+    supabase.from("categories").select("id,name").eq("store_id",store.id).eq("is_active",true).order("sort_order").limit(24),
+    supabase.from("reviews").select("id,displayName:display_name,rating,body").eq("store_id",store.id).eq("status","published").order("created_at",{ascending:false}).limit(24),
+  ]) : null;
+  const storePreview = preview && {
+    store: preview[0].data ?? { name: store.name, phone: store.phone, address: store.address, description: null },
+    products: (preview[1].data ?? []).map(product => ({ ...product, image: product.image ?? "" })),
+    categories: preview[2].data ?? [],
+    reviews: preview[3].data ?? [],
+  };
   const bank = getPlatformBankAccount();
   const filtered = items.filter(item => (!query.family || item.primary_family === query.family)
     && (query.price !== "free" || item.price_vnd === 0) && (query.price !== "paid" || item.price_vnd > 0));
@@ -68,6 +82,7 @@ export default async function Marketplace({ searchParams }: { searchParams: Prom
         <input type="hidden" name="store" value={store.id} /><input type="hidden" name="theme" value={existing.theme_id} /><input type="hidden" name="revision" value={existing.revision} />
         <label>Phiên bản<select name="release" defaultValue={existing.version_id}>{availableVersions.map(release => <option key={release.id} value={release.id}>{release.version}{release.id === existing.version_id ? " · Đang dùng" : ""}</option>)}</select></label>
         <button className="theme-primary" name="operation" value="version">Áp dụng phiên bản</button>
+        <p>Có thể chọn phiên bản cũ để quay lại. Hệ thống giữ các tùy chỉnh hợp nhất được và dừng nếu có xung đột.</p>
       </form>}
       <form action={manageStoreTheme} className="theme-form">
         <input type="hidden" name="store" value={store.id} /><input type="hidden" name="theme" value={existing.theme_id} /><input type="hidden" name="revision" value={existing.revision} />
@@ -78,7 +93,9 @@ export default async function Marketplace({ searchParams }: { searchParams: Prom
     {active && existing && draft && <section className="themes-create"><h2>Tùy chỉnh {active.name}</h2>
       <form action={manageStoreTheme} key={`${active.id}:${existing.revision}`} className="theme-form">
         <input type="hidden" name="store" value={store.id} /><input type="hidden" name="theme" value={active.id} /><input type="hidden" name="revision" data-theme-revision defaultValue={existing.revision} />
-        <ThemeBuilder initial={draft} family={active.primary_family} autosave={{ id: active.id, revision: existing.revision, save: autosaveStoreTheme.bind(null, store.id) }} />
+        {preview?.some(result => result.error) && <p role="alert">Một phần dữ liệu xem trước chưa tải được.</p>}
+        <ThemeBuilder storePreview={storePreview ?? undefined} initial={draft} family={active.primary_family} disabledComponents={availability.data?.disabled}
+          deprecatedComponents={availability.data?.deprecated} autosave={{ id: active.id, revision: existing.revision, save: autosaveStoreTheme.bind(null, store.id) }} />
         <button className="theme-primary" name="operation" value="draft">Lưu bản nháp</button>
       </form>
       <form action={manageStoreTheme} className="theme-form">

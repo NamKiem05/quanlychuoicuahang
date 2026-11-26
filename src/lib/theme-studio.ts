@@ -1,5 +1,5 @@
 import { isStoreThemePreset, isStorefrontStyle, isStorefrontSection, storefrontSectionIds, type StorefrontSection, type StorefrontStyle, type StoreThemePreset } from "@/lib/store-appearance";
-import { readThemePages, type ThemePage } from "./theme-pages";
+import { readablePublicThemePages, readThemePages, type ThemePage } from "./theme-pages";
 
 export const themeFamilies = {
   food: "Đồ ăn và đồ uống", fashion: "Thời trang", beauty: "Mỹ phẩm",
@@ -55,6 +55,13 @@ export function readThemeManifest(raw: unknown): ThemeManifest | null {
     headline: value.headline, density: value.density,
     settings: { font: settings.font, radius: settings.radius, width: settings.width, columns: settings.columns as [number, number, number] },
   };
+}
+
+export function readPublicThemeManifest(raw: unknown) {
+  if (raw && typeof raw === "object" && "schemaVersion" in raw && raw.schemaVersion === 2 && "pages" in raw) {
+    return readThemeManifest({ ...raw, pages: readablePublicThemePages(raw.pages) });
+  }
+  return readThemeManifest(raw);
 }
 
 export type ThemeProduct = {

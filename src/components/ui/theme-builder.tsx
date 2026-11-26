@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { storefrontSections, storefrontStyles, storeThemes, type StorefrontSection } from "@/lib/store-appearance";
 import type { ThemeManifest } from "@/lib/theme-studio";
-import ThemePageEditor from "./theme-page-editor";
+import ThemePageEditor, { type StudioPageTools } from "./theme-page-editor";
+import { useThemeDraftSave, type ThemeAutosave } from "./use-theme-draft-save";
+import type { ThemePage } from "@/lib/theme-pages";
+
+import type { BlockData } from "@/components/storefront/theme-sections";
 
 const widths = { Desktop: 1024, Tablet: 768, Mobile: 390 } as const;
 
@@ -14,54 +18,59 @@ function SampleSection({ id, headline }: { id: StorefrontSection; headline: stri
   return <span className="theme-sample-copy"><strong>Giới thiệu cửa hàng</strong><small>Nội dung giới thiệu và thông tin liên hệ</small></span>;
 }
 
-type Autosave = { id: string; revision: number; save: (id: string, revision: number, value: ThemeManifest) => Promise<{ revision?: number; error?: string }> };
-export default function ThemeBuilder({ initial, fieldName = "manifest", readOnly = false, family, autosave, disabledComponents, maxCustomPages }: { initial: ThemeManifest; fieldName?: string; readOnly?: boolean; family?: string; autosave?: Autosave; disabledComponents?: string[]; maxCustomPages?: number }) {
+function StoreSection({ id, headline, data }: { id: StorefrontSection; headline: string; data: BlockData }) {
+  if (id === "hero") return <span className="theme-sample-hero"><strong>{headline || data.store.name}</strong></span>;
+  if (id === "menu") return <span className="theme-sample-menu"><strong>Sản phẩm</strong><span>{data.products.slice(0, 3).map(product =>
+    <span key={product.id}><strong>{product.name}</strong><small>{product.price.toLocaleString("vi-VN")} ₫</small></span>)}</span>{!data.products.length && <small>Chưa có sản phẩm.</small>}</span>;
+  if (id === "reviews") return <span className="theme-sample-copy"><strong>Đánh giá</strong><small>{data.reviews[0]?.body || "Chưa có đánh giá."}</small></span>;
+  return <span className="theme-sample-copy"><strong>{data.store.name}</strong><small>{data.store.description || data.store.address}</small></span>;
+}
+
+function PreviewSection({ id, headline }: { id: StorefrontSection; headline: string }) {
+  const label = storefrontSections.find(section => section.id === id)?.label;
+  if (id === "hero") return <span className="theme-sample-hero"><strong>{headline || label}</strong></span>;
+  if (id === "menu") return <span className="theme-sample-menu"><strong>{label}</strong><span aria-hidden="true">
+    {[1, 2, 3].map(slot => <span key={slot}><i /></span>)}
+  </span></span>;
+  return <span className="theme-sample-copy"><strong>{label}</strong></span>;
+}
+
+export default function ThemeBuilder({ initial, fieldName = "manifest", readOnly = false, structureOnly = false, family, autosave, disabledComponents, deprecatedComponents, maxCustomPages, studio, pagePreview = false, storePreview }: { initial: ThemeManifest; fieldName?: string; readOnly?: boolean; structureOnly?: boolean; family?: string; autosave?: ThemeAutosave; disabledComponents?: string[]; deprecatedComponents?: string[]; maxCustomPages?: number; studio?: StudioPageTools; pagePreview?: boolean; storePreview?: BlockData }) {
   const [history, setHistory] = useState({ entries: [initial], index: 0 });
   const [selected, setSelected] = useState<StorefrontSection>("hero");
   const [device, setDevice] = useState<keyof typeof widths>("Desktop");
-  const [workspace, setWorkspace] = useState<"pages" | "home">(readOnly && !initial.pages?.length ? "home" : "pages");
+  const [workspace, setWorkspace] = useState<"pages" | "home">((readOnly || storePreview) && !initial.pages?.length ? "home" : "pages");
   const draft = history.entries[history.index];
-  const editor = useRef<HTMLElement>(null);
-  const revision = useRef(autosave?.revision ?? 0);
-  const lastAttempt = useRef(JSON.stringify(initial));
-  const alive = useRef(false);
-  const [saveStatus, setSaveStatus] = useState("");
-  const [saving, setSaving] = useState(false);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  useEffect(() => {
-    if (!autosave || saving || lastAttempt.current === JSON.stringify(draft)) return;
-    const timer = setTimeout(async () => {
-      const section = editor.current?.closest(".themes-create");
-      const blockSubmit = (event: Event) => event.preventDefault();
-      section?.addEventListener("submit", blockSubmit, true);
-      lastAttempt.current = JSON.stringify(draft);
-      setSaving(true); setSaveStatus("Đang tự lưu bản nháp…");
-      try {
-        const result = await autosave.save(autosave.id, revision.current, draft);
-        if (!alive.current) return;
-        if (result.revision !== undefined) {
-          revision.current = result.revision;
-          section?.querySelectorAll<HTMLInputElement>("[data-theme-revision]").forEach(input => { input.value = String(result.revision); });
-          section?.querySelectorAll<HTMLButtonElement>("[data-theme-publish]").forEach(button => { button.disabled = false; });
-          setSaveStatus("Đã tự lưu bản nháp.");
-        } else setSaveStatus(result.error === "conflict" ? "Bản nháp đã thay đổi ở phiên khác. Hãy tải lại để tiếp tục." : "Chưa tự lưu được. Kiểm tra nội dung hoặc dùng Lưu bản nháp.");
-      } catch {
-        if (alive.current) setSaveStatus("Chưa tự lưu được. Hãy dùng Lưu bản nháp.");
-      } finally {
-        section?.removeEventListener("submit", blockSubmit, true);
-        if (alive.current) setSaving(false);
-      }
-    }, 900);
-    return () => clearTimeout(timer);
-  }, [autosave, draft, saving]);
+  const { editor, persist, dirty, status } = useThemeDraftSave(initial, draft, autosave, Boolean(studio));
+  const [previewRevision, setPreviewRevision] = useState(0);
+  const [navigation, setNavigation] = useState(true);
+  const [zoom, setZoom] = useState(1);
+  const saveMessage = status === "saving" ? "Đang lưu bản nháp…" :
+    status === "conflict" ? "Bản nháp đã thay đổi ở phiên khác. Hãy tải lại để tiếp tục." :
+    dirty && status === "invalid" ? "Bản nháp chưa hợp lệ. Kiểm tra nội dung hoặc đường dẫn trang." :
+    dirty && status === "unavailable" ? "Chưa lưu được. Kiểm tra kết nối rồi thử lại." :
+    dirty ? "Có thay đổi chưa lưu." : status === "saved" ? "Đã lưu bản nháp." : "";
   const accent = storeThemes.find((theme) => theme.id === draft.preset)?.color;
   const deviceIndex = device === "Desktop" ? 0 : device === "Tablet" ? 1 : 2;
 
-  function change(patch: Partial<ThemeManifest>) {
+  function change(patch: Partial<ThemeManifest> | ((current: ThemeManifest) => Partial<ThemeManifest>)) {
     setHistory(current => ({
-      entries: [...current.entries.slice(0, current.index + 1), { ...current.entries[current.index], ...patch }].slice(-100),
+      entries: [...current.entries.slice(0, current.index + 1), { ...current.entries[current.index], ...(typeof patch === "function" ? patch(current.entries[current.index]) : patch) }].slice(-100),
       index: Math.min(current.index + 1, 99),
     }));
+  }
+
+  function updatePages(next: ThemePage[] | ((pages: ThemePage[]) => ThemePage[])) {
+    const now = new Date().toISOString();
+    change(current => {
+      const previous = current.pages ?? [];
+      const pages = typeof next === "function" ? next(previous) : next;
+      return {
+        schemaVersion: 2,
+        pages: studio ? pages.map(page => previous.includes(page) ? page :
+          { ...page, meta: { ...page.meta, updatedAt: now } }) : pages,
+      };
+    });
   }
 
   function move(section: StorefrontSection, target: StorefrontSection) {
@@ -85,19 +94,33 @@ export default function ThemeBuilder({ initial, fieldName = "manifest", readOnly
     <header className="theme-editor-toolbar">
     <div className="theme-editor-switch" role="group" aria-label="Khu vực chỉnh sửa">
       <button type="button" aria-pressed={workspace === "pages"} onClick={() => setWorkspace("pages")}>Trang &amp; component</button>
-      <button type="button" aria-pressed={workspace === "home"} onClick={() => setWorkspace("home")}>Bố cục trang chủ</button>
+      <button type="button" aria-pressed={workspace === "home"} onClick={() => setWorkspace("home")}>{studio ? "Trang chủ và thiết kế toàn cục" : "Bố cục trang chủ"}</button>
     </div>
     <div className="theme-editor-controls">
+      {studio && <>
+        <button type="button" aria-expanded={navigation} onClick={() => setNavigation(open => !open)}>{navigation ? "Thu gọn điều hướng" : "Mở điều hướng"}</button>
+        <button type="button" onClick={() => setPreviewRevision(value => value + 1)}>Làm mới preview</button>
+        <label>Thu phóng <select value={zoom} onChange={event => setZoom(Number(event.target.value))}>
+          <option value={0.5}>50%</option><option value={0.75}>75%</option><option value={1}>100%</option>
+        </select></label>
+        {autosave && <button type="button" disabled={!dirty || status === "saving" || status === "conflict"} onClick={persist}>
+          {status === "unavailable" ? "Thử lưu lại" : "Lưu bản nháp"}
+        </button>}
+      </>}
       {!readOnly && <><button type="button" disabled={history.index === 0} onClick={() => setHistory({ ...history, index: history.index - 1 })}>Hoàn tác</button>
       <button type="button" disabled={history.index === history.entries.length - 1} onClick={() => setHistory({ ...history, index: history.index + 1 })}>Làm lại</button></>}
       <div className="theme-device-switch" role="group" aria-label="Kích thước xem trước">{Object.keys(widths).map((size) => <button type="button" key={size} aria-pressed={device === size} onClick={() => setDevice(size as keyof typeof widths)}>{size}</button>)}</div>
     </div>
     </header>
-    {saveStatus && <p className="theme-editor-save" aria-live="polite">{saveStatus}</p>}
-    <div hidden={workspace !== "pages"}>{(!readOnly || draft.pages?.length) ? <ThemePageEditor pages={draft.pages ?? []} update={pages => change({ pages, schemaVersion: 2 })} family={family} readOnly={readOnly} width={widths[device]} disabledComponents={disabledComponents} maxCustomPages={maxCustomPages} /> : <p className="themes-empty">Mẫu này chưa có trang bổ sung.</p>}</div>
+    {!readOnly && saveMessage && <p className="theme-editor-save" aria-live="polite">{saveMessage}</p>}
+    <div hidden={workspace !== "pages"}>{(!readOnly || draft.pages?.length) ? <ThemePageEditor pages={draft.pages ?? []}
+      update={updatePages}
+      studio={studio} navigation={navigation} previewRevision={previewRevision} zoom={zoom} pagePreview={pagePreview} storePreview={storePreview}
+      preset={studio || pagePreview || storePreview ? draft.preset : undefined} family={family} readOnly={readOnly} width={widths[device]}
+      disabledComponents={disabledComponents} deprecatedComponents={deprecatedComponents} maxCustomPages={maxCustomPages} /> : <p className="themes-empty">Mẫu này chưa có trang bổ sung.</p>}</div>
     <div hidden={workspace !== "home"}>
-    <div className={readOnly ? undefined : "theme-studio-grid"}>
-      {!readOnly && <nav className="theme-studio-panel" aria-label="Các khối trang chủ">
+    <div className={readOnly ? undefined : `theme-studio-grid${studio && !navigation ? " is-collapsed" : ""}`}>
+      {!readOnly && <nav className="theme-studio-panel" hidden={Boolean(studio && !navigation)} aria-label="Các khối trang chủ">
         <h3>Trang chủ</h3>
         {draft.order.map(id => <button type="button" key={id} aria-pressed={selected === id}
           draggable onDragStart={event => event.dataTransfer.setData("text/plain", id)}
@@ -113,14 +136,19 @@ export default function ThemeBuilder({ initial, fieldName = "manifest", readOnly
         </div>
       </nav>}
       <div className="theme-studio-canvas">
-        <div className="theme-demo" data-style={draft.style} data-density={draft.density}
+        <div key={previewRevision} className="theme-demo" data-style={draft.style} data-density={draft.density}
           data-font={draft.settings.font} data-radius={draft.settings.radius}
-          style={{ maxWidth: widths[device] - (draft.settings.width === "standard" ? 24 : 0), borderColor: accent, "--preview-columns": draft.settings.columns[deviceIndex] } as CSSProperties}>
+          style={{ [studio ? "width" : "maxWidth"]: widths[device] - (draft.settings.width === "standard" ? 24 : 0),
+            zoom: studio ? zoom : undefined, borderColor: accent, "--preview-columns": draft.settings.columns[deviceIndex] } as CSSProperties}>
           {draft.order.filter(id => !draft.hidden.includes(id)).map(id => {
             const style = id === "hero" ? { backgroundColor: accent, color: "white" } : undefined;
-            const sample = <SampleSection id={id} headline={draft.headline} />;
+            const sample = structureOnly ? <PreviewSection id={id} headline={draft.headline} /> : storePreview ? <StoreSection id={id} headline={draft.headline} data={storePreview} /> : <SampleSection id={id} headline={draft.headline} />;
             return readOnly ? <div key={id} className="theme-demo-section" style={style}>{sample}</div>
-              : <button key={id} type="button" aria-pressed={selected === id} onClick={() => setSelected(id)} className="theme-demo-section" style={style}>{sample}</button>;
+              : <button key={id} type="button" draggable={Boolean(storePreview)}
+                onDragStart={event => event.dataTransfer.setData("text/plain", id)}
+                onDragOver={event => { if (storePreview) event.preventDefault(); }}
+                onDrop={event => { if (storePreview) { event.preventDefault(); move(event.dataTransfer.getData("text/plain") as StorefrontSection, id); } }}
+                aria-pressed={selected === id} onClick={() => setSelected(id)} className="theme-demo-section" style={style}>{sample}</button>;
           })}
         </div>
       </div>
@@ -128,7 +156,7 @@ export default function ThemeBuilder({ initial, fieldName = "manifest", readOnly
         <h3>{block?.label}</h3>
         {selected !== "menu" && <label><input type="checkbox" checked={!draft.hidden.includes(selected)} onChange={event => change({ hidden: event.target.checked ? draft.hidden.filter(id => id !== selected) : [...draft.hidden, selected] })} /> Hiển thị khối</label>}
         {selected === "hero" && <label>Tiêu đề banner<input maxLength={100} value={draft.headline} onChange={event => change({ headline: event.target.value })} /></label>}
-        <h3>Kiểu trình bày</h3>
+        <h3>Thiết kế toàn cục</h3>
         <label>Màu chủ đạo<select value={draft.preset} onChange={event => change({ preset: event.target.value as ThemeManifest["preset"] })}>{storeThemes.map(theme => <option key={theme.id} value={theme.id}>{theme.label}</option>)}</select></label>
         <label>Kiểu giao diện<select value={draft.style} onChange={event => change({ style: event.target.value as ThemeManifest["style"] })}>{storefrontStyles.map(style => <option key={style.id} value={style.id}>{style.label}</option>)}</select></label>
         <label>Khoảng cách<select value={draft.density} onChange={event => change({ density: event.target.value as ThemeManifest["density"] })}><option value="comfortable">Thoáng</option><option value="compact">Gọn</option></select></label>

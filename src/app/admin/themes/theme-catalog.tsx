@@ -1,5 +1,5 @@
-import Link from "next/link";
 import SidebarIcon from "@/components/ui/sidebar-icon";
+import Link from "next/link";
 import ThemeCover from "@/components/ui/theme-cover";
 import Toast from "@/components/ui/toast";
 import ThemeBuilder from "@/components/ui/theme-builder";
@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requirePlatformAdminAccess } from "@/lib/platform-account";
 import { defaultThemeManifest, readThemeManifest, themeFamilies, themeIdPattern } from "@/lib/theme-studio";
 import { autosaveThemeDraft, manageTheme, updateThemeAdmin } from "./actions";
+import { uploadStudioImage } from "./studio-image-action";
 import "./themes.css";
 
 const messages: Record<string, string> = {
@@ -26,10 +27,12 @@ export default async function ThemesCatalog({ searchParams, mode = "catalog" }: 
   const status = ["draft", "published", "archived"].includes(query.status ?? "") ? query.status : undefined;
   const family = typeof query.family === "string" && Object.hasOwn(themeFamilies, query.family) ? query.family : null;
   const price = query.price === "free" || query.price === "paid" ? query.price : null;
+  const marketplaceTheme = mode === "marketplace" && query.theme && themeIdPattern.test(query.theme) ? query.theme : null;
   const page = typeof query.page === "string" && /^\d{1,5}$/.test(query.page) ? Math.max(1, Number(query.page)) : 1;
   const list = supabase.from(mode === "marketplace" ? "admin_theme_marketplace_view" : "storefront_template_catalog").select("id,name,theme_slug,primary_family,lifecycle,price_vnd,created_at,created_by,preview_url,is_enabled,updated_at", { count: "exact" });
   if (text) list.ilike("name", `%${text}%`);
   if (mode === "marketplace") list.eq("lifecycle", "published");
+  if (marketplaceTheme) list.eq("id", marketplaceTheme);
   if (status && mode !== "marketplace") list.eq("lifecycle", status);
   if (family) list.eq("primary_family", family);
   if (price === "free") list.eq("price_vnd", 0);
@@ -39,7 +42,7 @@ export default async function ThemesCatalog({ searchParams, mode = "catalog" }: 
     list.order("created_at", { ascending: query.order === "oldest" }).order("id").range((page - 1) * 20, page * 20 - 1),
     selected ? supabase.from("storefront_template_catalog").select("id,name,theme_slug,description,primary_family,compatible_families,price_vnd,preview_url,draft,draft_revision,lifecycle").eq("id", selected).maybeSingle() : null,
     id ? supabase.from("storefront_theme_versions").select("id,version,published_at").eq("theme_id", id).order("release_no", { ascending: false }).limit(20) : null,
-    supabase.from("storefront_theme_policy").select("disabled_components,max_custom_pages").maybeSingle(),
+    supabase.from("storefront_theme_policy").select("disabled_components,deprecated_components,max_custom_pages").maybeSingle(),
     mode === "marketplace" ? supabase.from("storefront_theme_purchases").select("id,transfer_code,amount_vnd,confirmed_at").order("created_at", { ascending: false }).limit(8) : null,
   ]);
   const row = draft?.data;
@@ -54,6 +57,7 @@ export default async function ThemesCatalog({ searchParams, mode = "catalog" }: 
   if (status) pagination.set("status", status);
   if (family) pagination.set("family", family);
   if (price) pagination.set("price", price);
+  if (marketplaceTheme) pagination.set("theme", marketplaceTheme);
   if (query.order === "oldest") pagination.set("order", "oldest");
   function pageHref(next: number) { const params = new URLSearchParams(pagination); params.set("page", String(next)); return base + "?" + params; }
   return <main className="admin-content themes-page">
@@ -73,14 +77,19 @@ export default async function ThemesCatalog({ searchParams, mode = "catalog" }: 
           <fieldset className="theme-checks"><legend>Ngành tương thích thêm</legend>{Object.entries(themeFamilies).map(([key, value]) => <label key={key}><input name="compatibility" type="checkbox" value={key} defaultChecked={row?.compatible_families.includes(key)} /> {value}</label>)}</fieldset>
           <label>Mô tả<textarea name="summary" maxLength={1000} defaultValue={row?.description} /></label>
           <label>Ảnh xem trước (HTTPS)<input name="image" type="url" maxLength={2048} defaultValue={row?.preview_url ?? ""} /></label></details>
-          <ThemeBuilder initial={readThemeManifest(row?.draft) ?? defaultThemeManifest} family={row?.primary_family} disabledComponents={policy.data?.disabled_components} maxCustomPages={policy.data?.max_custom_pages} autosave={id && row ? { id, revision: row.draft_revision, save: autosaveThemeDraft } : undefined} />
-          <button className="theme-primary" name="operation" value="save">Lưu bản nháp</button>
+          <ThemeBuilder key={query.page} initial={readThemeManifest(row?.draft) ?? defaultThemeManifest} family={row?.primary_family} disabledComponents={policy.data?.disabled_components} deprecatedComponents={policy.data?.deprecated_components}
+            maxCustomPages={policy.data?.max_custom_pages} autosave={id && row ? { id, revision: row.draft_revision, save: autosaveThemeDraft } : undefined}
+            studio={mode === "studio" && id ? { pages: `/admin/themes/pages?edit=${id}`,
+              components: `/admin/themes/components?family=${row?.primary_family ?? "general"}`, upload: uploadStudioImage.bind(null, id),
+              initialPage: query.page && themeIdPattern.test(query.page) ? query.page : undefined } : undefined} />
+          <button className="theme-primary" name="operation" value="save">{mode === "studio" && id ? "Lưu thông tin và bản nháp" : "Lưu bản nháp"}</button>
         </form>
         {id && row && <div className="theme-release-tools">
+          {mode === "studio" ? <p>Phát hành tạo snapshot mới từ bản nháp đã lưu. <Link href={`/admin/themes/versions?theme=${id}&publish=1#version-publish`}>Kiểm tra và phát hành</Link></p> :
           <form action={manageTheme} className="theme-form"><input type="hidden" name="theme" value={id} /><input type="hidden" name="revision" data-theme-revision defaultValue={row.draft_revision} />
             <label>Phiên bản bản nháp đã lưu<input name="version" placeholder="1.0.0" required pattern="[0-9]{1,4}[.][0-9]{1,4}[.][0-9]{1,4}" /></label>
             <button className="theme-primary" name="operation" value="publish">Phát hành</button>
-          </form>
+          </form>}
           {row.lifecycle !== "archived" && <form action={manageTheme} className="theme-form"><input type="hidden" name="theme" value={id} /><input type="hidden" name="revision" value={row.draft_revision} />
             <label><input type="checkbox" name="confirm" value="yes" required /> Xác nhận ngừng phân phối</label>
             <button name="operation" value="archive">Ngừng phân phối</button>
@@ -92,12 +101,14 @@ export default async function ThemesCatalog({ searchParams, mode = "catalog" }: 
     <section className="theme-catalog" aria-label="Danh mục giao diện">
     <header className="theme-section-heading"><h2>Danh mục giao diện</h2>{catalog.count != null && <span>{catalog.count.toLocaleString("vi-VN")} giao diện</span>}</header>
     <form method="get" className="themes-filters">
+      {marketplaceTheme && <input type="hidden" name="theme" value={marketplaceTheme} />}
       <label>Tìm tên<input name="q" defaultValue={text} /></label>
       {mode !== "marketplace" && <label>Trạng thái<select name="status" defaultValue={status}><option value="">Tất cả</option><option value="draft">Bản nháp</option><option value="published">Đã phát hành</option><option value="archived">Ngừng phân phối</option></select></label>}
       <label>Ngành hàng<select name="family" defaultValue={family ?? ""}><option value="">Tất cả</option>{Object.entries(themeFamilies).map(([key,value]) => <option key={key} value={key}>{value}</option>)}</select></label>
       <label>Giá<select name="price" defaultValue={price ?? ""}><option value="">Tất cả</option><option value="free">Miễn phí</option><option value="paid">Trả phí</option></select></label>
       <label>Sắp xếp<select name="order" defaultValue={query.order}><option value="">Mới nhất</option><option value="oldest">Cũ nhất</option></select></label><button>Tìm</button>
     </form>
+    {marketplaceTheme && <Link href="/admin/themes/marketplace">Xem toàn bộ Marketplace</Link>}
     {catalog.error ? <p role="alert">Chưa tải được danh mục. Kiểm tra migration Theme Studio.</p> : <>
       <div className="themes-grid">{catalog.data?.map(item => {
         const stats = statistics.get(item.id);
